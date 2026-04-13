@@ -205,7 +205,7 @@ def ID(raw_inst: str): # for testing-passing in raw instruction. in future it sh
 
     ID_EX["Branch"]   = 1 if branch else 0
     ID_EX["ALUOp"]    = ALUOp_map.get(inst.op)
-    ID_EX["ALUSrc"]   = 1 if inst.op in {"addi","addui","subi","andi","ori","xori","lui", "lw","lb","lh","sw","sb","sh"} else 0 
+    ID_EX["ALUSrc"]   = 1 if inst.op in {"addi","addui","subi","andi","ori","xori","lui", "lw","lb","lh","sw","sb","sh"} else 0
     ID_EX["MemRead"]  = 1 if inst.op in {"lw", "lb", "lh"} else 0
     ID_EX["MemToReg"] = 1 if inst.op in {"lw", "lb", "lh"} else 0
     ID_EX["MemWrite"] = 1 if inst.op in {"sw", "sb", "sh"} else 0
