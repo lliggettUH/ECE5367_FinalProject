@@ -21,7 +21,7 @@ instruction_type_map = {
     "xor" : "R",
     "nor" : "R",
     "sll" : "R",
-    "slr" : "R",
+    "srl" : "R",
     "sra" : "R",
     "mult": "R",
     "div" : "R",
@@ -35,7 +35,7 @@ instruction_type_map = {
     "xori" : "I",
     "nori" : "I",
     "slli" : "I",
-    "slri" : "I",
+    "srli" : "I",
     "srai" : "I",
     "multi": "I",
     "divi" : "I",
@@ -53,6 +53,7 @@ instruction_type_map = {
     "bge"    : "I",
     "blt"    : "I",
     "ble"    : "I",
+    "beq"    : "I",
 
     "j"    : "J",
     "jal"  : "J",
@@ -132,6 +133,7 @@ stack = [0] * 1024
 IF_ID  = { # Holds fetched instruction and incremented PC (PC + 1)
 
 } 
+IF_ID_NEXT = IF_ID
 
 ID_EX = { # Stores decoded instruction info
     "inst": None, 
@@ -151,14 +153,17 @@ ID_EX = { # Stores decoded instruction info
     "MemToReg": 0,
     "Branch": 0,
 } 
+ID_EX_NEXT = ID_EX
 
 EX_MEM = { # Holds ALU result, branch target, data for storing, and destination register
 
 } 
+EX_MEM_NEXT = EX_MEM
 
 MEM_WB = { # Stores data loaded from memory, ALU output, which are passed to register file for final write back
     
 }
+MEM_WB_NEXT = MEM_WB
 
 def ID(raw_inst: str): # for testing-passing in raw instruction. in future it should pull it from global IF_ID
     # raw_inst = IF_ID["inst"]
@@ -192,25 +197,25 @@ def ID(raw_inst: str): # for testing-passing in raw instruction. in future it sh
 
     branch = inst.op in {"beq", "bne", "bgez", "bgtz", "blez", "bltz", "bgt", "blt", "bge", "ble"}
 
-    global ID_EX # allow for modification of global from inside function
+    global ID_EX_NEXT # allow for modification of global from inside function
 
-    ID_EX["inst"]   = inst
+    ID_EX_NEXT["inst"]   = inst
     # ID_EX["pc"]   = IF_ID["pc"]
-    ID_EX["rs"]     = inst.rs
-    ID_EX["rt"]     = inst.rt
-    ID_EX["rd"]     = inst.rd
-    ID_EX["imm"]    = inst.imm
-    ID_EX["rs_val"] = registers.get(inst.rs)
-    ID_EX["rt_val"] = registers.get(inst.rt)
+    ID_EX_NEXT["rs"]     = inst.rs
+    ID_EX_NEXT["rt"]     = inst.rt
+    ID_EX_NEXT["rd"]     = inst.rd
+    ID_EX_NEXT["imm"]    = inst.imm
+    ID_EX_NEXT["rs_val"] = registers.get(inst.rs)
+    ID_EX_NEXT["rt_val"] = registers.get(inst.rt)
 
-    ID_EX["Branch"]   = 1 if branch else 0
-    ID_EX["ALUOp"]    = ALUOp_map.get(inst.op)
-    ID_EX["ALUSrc"]   = 1 if inst.op in {"addi","addui","subi","andi","ori","xori","lui", "lw","lb","lh","sw","sb","sh"} else 0
-    ID_EX["MemRead"]  = 1 if inst.op in {"lw", "lb", "lh"} else 0
-    ID_EX["MemToReg"] = 1 if inst.op in {"lw", "lb", "lh"} else 0
-    ID_EX["MemWrite"] = 1 if inst.op in {"sw", "sb", "sh"} else 0
-    ID_EX["RegDst"]   = 1 if inst.type == "R" else 0
-    ID_EX["RegWrite"] = 1 if inst.op in {
+    ID_EX_NEXT["Branch"]   = 1 if branch else 0
+    ID_EX_NEXT["ALUOp"]    = ALUOp_map.get(inst.op)
+    ID_EX_NEXT["ALUSrc"]   = 1 if inst.op in {"addi","addui","subi","andi","ori","xori","lui", "lw","lb","lh","sw","sb","sh"} else 0
+    ID_EX_NEXT["MemRead"]  = 1 if inst.op in {"lw", "lb", "lh"} else 0
+    ID_EX_NEXT["MemToReg"] = 1 if inst.op in {"lw", "lb", "lh"} else 0
+    ID_EX_NEXT["MemWrite"] = 1 if inst.op in {"sw", "sb", "sh"} else 0
+    ID_EX_NEXT["RegDst"]   = 1 if inst.type == "R" else 0
+    ID_EX_NEXT["RegWrite"] = 1 if inst.op in {
                                             "add","addu","sub","subu","and","or","xor","nor",
                                             "sll","sra","slr",
                                             "addi","addui","subi","andi","ori","xori","lui",
@@ -219,13 +224,20 @@ def ID(raw_inst: str): # for testing-passing in raw instruction. in future it sh
                                         } else 0
 
 def run(program): 
-    # while pc < len(program) * 4:
+    global IF_ID, IF_ID_NEXT, ID_EX, ID_EX_NEXT, EX_MEM, EX_MEM_NEXT, MEM_WB, MEM_WB_NEXT
+
+    # while pc < len(program):
     for inst in program:
         # WB
         # MEM
         # EX
         ID(inst) # passing raw instruction for test
         # IF
+
+        IF_ID = IF_ID_NEXT
+        ID_EX = ID_EX_NEXT
+        EX_MEM = EX_MEM_NEXT
+        MEM_WB = MEM_WB_NEXT
 
 program = [
     "addi $t0, $zero, 1",
