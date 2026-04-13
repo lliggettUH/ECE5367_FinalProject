@@ -54,7 +54,6 @@ instruction_type_map = {
     "blt"    : "I",
     "ble"    : "I",
 
-
     "j"    : "J",
     "jal"  : "J",
     "jr"   : "J",
@@ -193,8 +192,6 @@ def ID(raw_inst: str): # for testing-passing in raw instruction. in future it sh
 
     branch = inst.op in {"beq", "bne", "bgez", "bgtz", "blez", "bltz", "bgt", "blt", "bge", "ble"}
 
-    print(inst)
-
     global ID_EX # allow for modification of global from inside function
 
     ID_EX["inst"]   = inst
@@ -208,12 +205,12 @@ def ID(raw_inst: str): # for testing-passing in raw instruction. in future it sh
 
     ID_EX["Branch"]   = 1 if branch else 0
     ID_EX["ALUOp"]    = ALUOp_map.get(inst.op)
-    ID_EX["ALUSrc"]   = 1 if inst.op in {"addi","addui","subi","andi","ori","xori","lui", "lw","lb","lh","sw","sb","sh"} else 0 # asked ChatGPT for this condition
+    ID_EX["ALUSrc"]   = 1 if inst.op in {"addi","addui","subi","andi","ori","xori","lui", "lw","lb","lh","sw","sb","sh"} else 0 
     ID_EX["MemRead"]  = 1 if inst.op in {"lw", "lb", "lh"} else 0
     ID_EX["MemToReg"] = 1 if inst.op in {"lw", "lb", "lh"} else 0
     ID_EX["MemWrite"] = 1 if inst.op in {"sw", "sb", "sh"} else 0
     ID_EX["RegDst"]   = 1 if inst.type == "R" else 0
-    ID_EX["RegWrite"] = 1 if inst.op in { # asked ChatGPT for this condition
+    ID_EX["RegWrite"] = 1 if inst.op in {
                                             "add","addu","sub","subu","and","or","xor","nor",
                                             "sll","sra","slr",
                                             "addi","addui","subi","andi","ori","xori","lui",
@@ -221,14 +218,14 @@ def ID(raw_inst: str): # for testing-passing in raw instruction. in future it sh
                                             "jal"
                                         } else 0
 
-def execute(program: str): 
+def run(program): 
+    # while pc < len(program) * 4:
     for inst in program:
         # WB
         # MEM
         # EX
-        # ID
-        # IF
         ID(inst) # passing raw instruction for test
+        # IF
 
 program = [
     "addi $t0, $zero, 1",
@@ -239,4 +236,4 @@ program = [
     "j 1000",
 ]
 
-execute(program)
+run(program)
