@@ -223,6 +223,28 @@ def ID(raw_inst: str): # for testing-passing in raw instruction. in future it sh
                                             "jal"
                                         } else 0
 
+
+def MEM(): 
+    global MEM_WB_NEXT, stack, pc
+
+    # grabbing results from previous pipeline output
+    alu_result = EX_MEM.get("alu_result", 0)
+    rt_val = EX_MEM.get("rt_val", 0)
+    inst = EX_MEM.get("inst")
+    branch_target = EX_MEM.get("branch_target", 0)
+
+    mem_read = EX_MEM.get("MemRead",  0)
+    mem_write  = EX_MEM.get("MemWrite", 0)
+    reg_write = EX_MEM.get("RegWrite", 0)
+    mem_to_reg = EX_MEM.get("MemToReg", 0)
+    dest_reg = EX_MEM.get("dst_reg",  None)
+    branch = EX_MEM.get("Branch",   0)
+    zero = EX_MEM.get("zero",     0)
+    mem_data = 0
+
+    
+
+
 def run(program): 
     global IF_ID, IF_ID_NEXT, ID_EX, ID_EX_NEXT, EX_MEM, EX_MEM_NEXT, MEM_WB, MEM_WB_NEXT
 
