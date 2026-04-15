@@ -282,14 +282,13 @@ def WB():
     branchTarget = MEM_WB.get("branch_target", 0)
 
     if regWrite and destReg is not None:
-        if destReg != "zero":   
+        if destReg != "zero" or destReg != "at" or destReg != "k0" or destReg != "k1":   
             if memToReg:
                 registers[destReg] = memData
             else:
                 registers[destReg] = aluResult
-
-
-
+    
+    
 def EX():
     global EX_MEM_NEXT
 
