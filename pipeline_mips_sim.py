@@ -287,9 +287,8 @@ def WB():
                 registers[destReg] = memData
             else:
                 registers[destReg] = aluResult
-    
-    #debug
-    print("WB: inst={inst}, write={regWrite}, reg={destReg}, value={registers.get(destReg)}")
+
+
 
 def EX():
     global EX_MEM_NEXT
