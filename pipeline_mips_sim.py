@@ -269,6 +269,28 @@ def MEM():
     MEM_WB_NEXT["pc_src"]        = pc_src        
     MEM_WB_NEXT["branch_target"] = branch_target 
 
+def WB():
+    
+    # Get Results from previous Pipeline
+    inst = MEM_WB.get("inst")
+    memToReg = MEM_WB.get("MemToReg", 0) 
+    aluResult = MEM_WB.get("alu_result", 0)
+    memData = MEM_WB.get("mem_data", 0)
+    destReg = MEM_WB.get("dest_reg", None)
+    regWrite = MEM_WB.get("RegWrite", 0)
+    pcSrc = MEM_WB.get("pc_src", 0)
+    branchTarget = MEM_WB.get("branch_target", 0)
+
+    if regWrite and destReg is not None:
+        if destReg != "zero":   
+            if memToReg:
+                registers[destReg] = memData
+            else:
+                registers[destReg] = aluResult
+    
+    #debug
+    print("WB: inst={inst}, write={regWrite}, reg={destReg}, value={registers.get(destReg)}")
+
 def EX():
     global EX_MEM_NEXT
 
