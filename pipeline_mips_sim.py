@@ -223,6 +223,52 @@ def ID(raw_inst: str): # for testing-passing in raw instruction. in future it sh
                                             "jal"
                                         } else 0
 
+
+def MEM(): 
+    global MEM_WB_NEXT, stack, pc
+
+    # grabbing results from previous pipeline output
+    alu_result = EX_MEM.get("alu_result", 0)
+    rt_val = EX_MEM.get("rt_val", 0)
+    inst = EX_MEM.get("inst")
+    branch_target = EX_MEM.get("branch_target", 0)
+
+    mem_read = EX_MEM.get("MemRead",  0)
+    mem_write  = EX_MEM.get("MemWrite", 0)
+    reg_write = EX_MEM.get("RegWrite", 0)
+    mem_to_reg = EX_MEM.get("MemToReg", 0)
+    dest_reg = EX_MEM.get("dst_reg",  None)
+    branch = EX_MEM.get("Branch",   0)
+    zero = EX_MEM.get("zero",     0)
+    mem_data = 0
+
+    pc_src = 1 if (branch and zero) else 0
+    if pc_src:
+        pc = branch_target
+
+    if mem_read:
+        addr = alu_result
+        if addr >= 0 and addr < len(stack):
+            mem_data = stack[addr]
+        else:
+            raise IndexError(f"MEM: Load address {addr} out of bounds")
+
+    elif mem_write:
+        addr = alu_result
+        if addr >= 0 and addr < len(stack):
+            stack[addr] = rt_val
+        else:
+            raise IndexError(f"MEM: Store address {addr} out of bounds")
+        
+    MEM_WB_NEXT["inst"]          = inst
+    MEM_WB_NEXT["alu_result"]    = alu_result    # 4 WB if MemToReg = 0
+    MEM_WB_NEXT["mem_data"]      = mem_data      # 4 WB if MemToReg = 1
+    MEM_WB_NEXT["dest_reg"]      = dest_reg
+    MEM_WB_NEXT["RegWrite"]      = reg_write
+    MEM_WB_NEXT["MemToReg"]      = mem_to_reg
+    MEM_WB_NEXT["pc_src"]        = pc_src        
+    MEM_WB_NEXT["branch_target"] = branch_target 
+
 def EX():
     global EX_MEM_NEXT
 
