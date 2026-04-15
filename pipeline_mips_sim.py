@@ -223,6 +223,54 @@ def ID(raw_inst: str): # for testing-passing in raw instruction. in future it sh
                                             "jal"
                                         } else 0
 
+def EX():
+    global EX_MEM_NEXT
+
+    # ── Operand selection ──────────────────────────────────────────────
+    A = ID_EX["rs_val"]
+
+    # ALUSrc MUX: 1 → use immediate, 0 → use rt_val
+    B = ID_EX["imm"] if ID_EX["ALUSrc"] else ID_EX["rt_val"]
+
+    # RegDst MUX: 1 → rd (R-type), 0 → rt (I-type)
+    dst_reg = ID_EX["rd"] if ID_EX["RegDst"] else ID_EX["rt"]
+
+    # ── ALU ────────────────────────────────────────────────────────────
+    op = ID_EX["ALUOp"]
+    alu_result = 0
+
+    if   op == "ADD": alu_result = A + B
+    elif op == "SUB": alu_result = A - B
+    elif op == "AND": alu_result = A & B
+    elif op == "OR" : alu_result = A | B
+    elif op == "XOR": alu_result = A ^ B
+    elif op == "NOR": alu_result = ~(A | B)
+    elif op == "SLL": alu_result = A << B
+    elif op == "SRL": alu_result = A >> B      # logical (unsigned)
+    elif op == "SRA": alu_result = A >> B      # Python >> is arithmetic for signed ints
+    # op is None for J-type (j, jal, jr) — alu_result stays 0
+
+    zero = 1 if alu_result == 0 else 0        # zero flag used by branch logic in MEM
+
+    # ── Branch target adder ────────────────────────────────────────────
+    # Runs in parallel with the ALU; MEM stage decides whether to use it
+    branch_target = ID_EX["pc"] + ID_EX["imm"]
+
+    # ── Write to EX_MEM ────────────────────────────────────────────────
+    EX_MEM_NEXT["alu_result"]    = alu_result
+    EX_MEM_NEXT["branch_target"] = branch_target
+    EX_MEM_NEXT["zero"]          = zero
+    EX_MEM_NEXT["rt_val"]        = ID_EX["rt_val"]   # store data passthrough (sw/sb/sh)
+    EX_MEM_NEXT["dst_reg"]       = dst_reg
+
+    # Control signals pass through to MEM and WB
+    EX_MEM_NEXT["Branch"]        = ID_EX["Branch"]
+    EX_MEM_NEXT["MemRead"]       = ID_EX["MemRead"]
+    EX_MEM_NEXT["MemWrite"]      = ID_EX["MemWrite"]
+    EX_MEM_NEXT["RegWrite"]      = ID_EX["RegWrite"]
+    EX_MEM_NEXT["MemToReg"]      = ID_EX["MemToReg"]
+    EX_MEM_NEXT["inst"]          = ID_EX["inst"]      # useful for debugging
+
 def run(program): 
     global IF_ID, IF_ID_NEXT, ID_EX, ID_EX_NEXT, EX_MEM, EX_MEM_NEXT, MEM_WB, MEM_WB_NEXT
 
@@ -230,7 +278,7 @@ def run(program):
     for inst in program:
         # WB
         # MEM
-        # EX
+        EX()
         ID(inst) # passing raw instruction for test
         # IF
 
