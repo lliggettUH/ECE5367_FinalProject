@@ -226,7 +226,12 @@ def ID(raw_inst: str): # for testing-passing in raw instruction. in future it sh
 def EX():
     global EX_MEM_NEXT
 
-    # ── Operand selection ──────────────────────────────────────────────
+    # Printing test input values from ID_EX for debugging
+    # print(f"EX | {ID_EX['inst'].op:4} | rs={ID_EX['rs']}({ID_EX['rs_val']}) "
+      # f"rt={ID_EX['rt']}({ID_EX['rt_val']}) imm={ID_EX['imm']} "
+      # f"ALUSrc={ID_EX['ALUSrc']}")
+
+    # Operand selection
     A = ID_EX["rs_val"]
 
     # ALUSrc MUX: 1 → use immediate, 0 → use rt_val
@@ -235,7 +240,7 @@ def EX():
     # RegDst MUX: 1 → rd (R-type), 0 → rt (I-type)
     dst_reg = ID_EX["rd"] if ID_EX["RegDst"] else ID_EX["rt"]
 
-    # ── ALU ────────────────────────────────────────────────────────────
+    # ALU
     op = ID_EX["ALUOp"]
     alu_result = 0
 
@@ -246,17 +251,22 @@ def EX():
     elif op == "XOR": alu_result = A ^ B
     elif op == "NOR": alu_result = ~(A | B)
     elif op == "SLL": alu_result = A << B
-    elif op == "SRL": alu_result = A >> B      # logical (unsigned)
-    elif op == "SRA": alu_result = A >> B      # Python >> is arithmetic for signed ints
+    elif op == "SRL": alu_result = A >> B 
+    elif op == "SRA": alu_result = A >> B 
     # op is None for J-type (j, jal, jr) — alu_result stays 0
 
     zero = 1 if alu_result == 0 else 0        # zero flag used by branch logic in MEM
 
-    # ── Branch target adder ────────────────────────────────────────────
+    # Branch target adder 
     # Runs in parallel with the ALU; MEM stage decides whether to use it
-    branch_target = ID_EX["pc"] + ID_EX["imm"]
+    # branch_target = ID_EX["pc"] + ID_EX["imm"] 
+    if ID_EX["Branch"]:
+        imm = ID_EX["imm"] if ID_EX["imm"] is not None else 0
+        branch_target = ID_EX["pc"] + imm
+    else:
+        branch_target = 0
 
-    # ── Write to EX_MEM ────────────────────────────────────────────────
+    # Write to EX_MEM 
     EX_MEM_NEXT["alu_result"]    = alu_result
     EX_MEM_NEXT["branch_target"] = branch_target
     EX_MEM_NEXT["zero"]          = zero
@@ -271,6 +281,8 @@ def EX():
     EX_MEM_NEXT["MemToReg"]      = ID_EX["MemToReg"]
     EX_MEM_NEXT["inst"]          = ID_EX["inst"]      # useful for debugging
 
+    # print("EX result:", alu_result, "dest:", dst_reg)
+
 def run(program): 
     global IF_ID, IF_ID_NEXT, ID_EX, ID_EX_NEXT, EX_MEM, EX_MEM_NEXT, MEM_WB, MEM_WB_NEXT
 
@@ -278,12 +290,12 @@ def run(program):
     for inst in program:
         # WB
         # MEM
-        EX()
         ID(inst) # passing raw instruction for test
+        EX() 
         # IF
 
-        IF_ID = IF_ID_NEXT
-        ID_EX = ID_EX_NEXT
+        IF_ID = IF_ID_NEXT 
+        ID_EX = ID_EX_NEXT 
         EX_MEM = EX_MEM_NEXT
         MEM_WB = MEM_WB_NEXT
 
