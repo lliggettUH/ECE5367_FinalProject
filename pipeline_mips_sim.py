@@ -281,13 +281,19 @@ def WB():
     pcSrc = MEM_WB.get("pc_src", 0)
     branchTarget = MEM_WB.get("branch_target", 0)
 
+    # Test part 1 (finding value in reg before write back)
+    # print(f'register destReg, value {registers[destReg]}')
+
     if regWrite and destReg is not None:
-        if destReg != "zero" or destReg != "at" or destReg != "k0" or destReg != "k1":   
-            if memToReg:
-                registers[destReg] = memData
-            else:
-                registers[destReg] = aluResult
+        if destReg != "zero" and destReg != "at" and destReg != "k0" and destReg != "k1":
+            if destReg != "gp" and destReg != "sp" and destReg != "fp" and destReg != "ra":   
+                if memToReg:
+                    registers[destReg] = memData
+                else:
+                    registers[destReg] = aluResult
     
+    # Test part 2 (See if register was updated)
+    #print(f'register destReg, value {registers[destReg]}')
     
 def EX():
     global EX_MEM_NEXT
@@ -354,7 +360,7 @@ def run(program):
 
     # while pc < len(program):
     for inst in program:
-        # WB
+        WB()
         # MEM
         ID(inst) # passing raw instruction for test
         EX() 
