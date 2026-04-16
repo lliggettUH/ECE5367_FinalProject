@@ -278,8 +278,8 @@ def WB():
     memData = MEM_WB.get("mem_data", 0)
     destReg = MEM_WB.get("dest_reg", None)
     regWrite = MEM_WB.get("RegWrite", 0)
-    pcSrc = MEM_WB.get("pc_src", 0)
-    branchTarget = MEM_WB.get("branch_target", 0)
+    pcSrc = MEM_WB.get("pc_src", 0)                 # Still don't know what do w/ these 2
+    branchTarget = MEM_WB.get("branch_target", 0)   #
 
     # Test part 1 (finding value in reg before write back)
     # print(f'register destReg, value {registers[destReg]}')
