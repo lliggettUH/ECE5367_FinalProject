@@ -37,8 +37,6 @@ instruction_type_map = {
     "slli" : "I",
     "srli" : "I",
     "srai" : "I",
-    "multi": "I",
-    "divi" : "I",
     "lui"  : "I",
     "lw"   : "I",
     "sw"   : "I",
@@ -91,6 +89,82 @@ ALUOp_map = {
     "xor":  "XOR",
     "xori": "XOR",
 }
+
+opcode_map = {
+    0x02: "j",
+    0x03: "jal",
+
+    0x01: "REGIMM",
+    0x04: "beq",
+    0x05: "bne",
+
+    0x08: "addi",
+    0x09: "addiu",
+    0x0A: "slti",
+    0x0B: "sltiu",
+
+    0x0C: "andi",
+    0x0D: "ori",
+    0x0E: "xori",
+    0x0F: "lui",
+
+    0x20: "lb",
+    0x21: "lh",
+    0x23: "lw",
+
+    0x28: "sb",
+    0x29: "sh",
+    0x2B: "sw"
+}
+
+funct_map = {
+    0x20: "add",
+    0x21: "addu",
+    0x22: "sub",
+    0x23: "subu",
+
+    0x24: "and",
+    0x25: "or",
+    0x26: "xor",
+    0x27: "nor",
+
+    0x2A: "slt",
+    0x2B: "sltu",
+
+    0x00: "sll",
+    0x02: "srl",
+    0x03: "sra",
+    0x04: "sllv",
+    0x06: "srlv",
+    0x07: "srav",
+
+    0x08: "jr",
+    0x09: "jalr",
+
+    0x18: "mult",
+    0x19: "multu",
+    0x1A: "div",
+    0x1B: "divu",
+
+    0x10: "mfhi",
+    0x12: "mflo",
+    0x11: "mthi",
+    0x13: "mtlo"
+}
+
+regimm_map = {
+    0x00: "bltz",
+    0x01: "bgez",
+    0x10: "bltzal",
+    0x11: "bgezal"
+}
+
+reg_names = [
+    "zero","at","v0","v1","a0","a1","a2","a3",
+    "t0","t1","t2","t3","t4","t5","t6","t7",
+    "s0","s1","s2","s3","s4","s5","s6","s7",
+    "t8","t9","k0","k1","gp","sp","fp","ra"
+]
 
 registers = {
     "zero": 0, # constant 0
@@ -164,6 +238,80 @@ MEM_WB = { # Stores data loaded from memory, ALU output, which are passed to reg
     
 }
 MEM_WB_NEXT = MEM_WB
+
+def is_binary_string(s):
+    s = s.strip()
+    return len(s) > 0 and all(c in "01" for c in s)
+
+def split_machine_code(inst):
+    inst = inst.replace("0x", "")
+    if is_binary_string(inst):
+        inst = int(inst, 2)
+    else:
+        inst = int(inst, 16)
+    opcode = (inst & 0xFC000000) >> 26
+    rs     = (inst & 0x03E00000) >> 21
+    rt     = (inst & 0x001F0000) >> 16
+    rd     = (inst & 0x0000F800) >> 11
+    shamt  = (inst & 0x000007C0) >> 6
+    funct  = (inst & 0x0000003F)
+    target = inst & 0x03FFFFFF
+    imm = inst & 0x0000FFFF
+    if imm & 0x8000: # for signed
+        imm -= 0x10000
+    return opcode, rs, rt, rd, shamt, funct, target, imm
+
+def machine_to_asm(opcode, rs, rt, rd, shamt, funct, target, imm):
+    readable_inst = ""
+
+    if opcode == 0x00:
+        op = funct_map.get(funct, "unknown")
+
+        rs_n = reg_names[rs]
+        rt_n = reg_names[rt]
+        rd_n = reg_names[rd]
+
+        if op in ["sll", "srl", "sra"]:
+            readable_inst = f"{op} {rd_n}, {rt_n}, {shamt}"
+
+        elif op in ["mult", "div", "multu", "divu"]:
+            readable_inst = f"{op} {rs_n}, {rt_n}"
+
+        else:
+            readable_inst = f"{op} {rd_n}, {rs_n}, {rt_n}"
+
+    else:
+        op_name = opcode_map.get(opcode, "unknown")
+
+        if op_name in ["j", "jal"]:
+            addr = target << 2
+            readable_inst = f"{op_name} {hex(addr)}"
+
+        elif op_name in ["lw", "sw", "lb", "sb", "lh", "sh"]:
+            rt_n = reg_names[rt]   # value register
+            rs_n = reg_names[rs]   # base register
+            readable_inst = f"{op_name} {rt_n}, {imm}({rs_n})"
+
+        elif op_name in ["addi", "addiu", "andi", "ori", "xori", "slti"]:
+            rt_n = reg_names[rt]
+            rs_n = reg_names[rs]
+            readable_inst = f"{op_name} {rt_n}, {rs_n}, {imm}"
+
+        elif op_name == "REGIMM":
+            op = regimm_map.get(rt, "unknown")
+            rs_n = reg_names[rs]
+            readable_inst = f"{op} {rs_n}, {imm}"
+
+        elif op_name in ["beq", "bne", "bgt", "bge", "blt", "ble"]:
+            rs_n = reg_names[rs]
+            rt_n = reg_names[rt]
+            readable_inst = f"{op_name} {rs_n}, {rt_n}, {imm}"
+
+        else:
+            readable_inst = f"{op_name} (unhandled)"
+
+    return readable_inst
+
 
 def ID(raw_inst: str): # for testing-passing in raw instruction. in future it should pull it from global IF_ID
     # raw_inst = IF_ID["inst"]
@@ -371,13 +519,31 @@ def run(program):
         EX_MEM = EX_MEM_NEXT
         MEM_WB = MEM_WB_NEXT
 
-program = [
-    "addi $t0, $zero, 1",
-    "addi $t1, $zero, 2",   
-    "add  $t2, $t1,  $t0",
-    "add  $t3, $t2,  $t1",
-    "lw   $t4, 4($t1)",
-    "j 1000",
-]
+# program = [
+#     "addi $t0, $zero, 1",
+#     "addi $t1, $zero, 2",   
+#     "add  $t2, $t1,  $t0",
+#     "add  $t3, $t2,  $t1",
+#     "lw   $t4, 4($t1)",
+#     "j 1000",
+# ]
 
-run(program)
+program = []
+
+program_path = "sample_machine2a.asm"
+
+with open(program_path, "r") as f:
+    program = f.readlines()
+
+# Clean instructions for parsing
+for i in range(len(program)):
+    line = program[i].strip()
+    if line.startswith("0x") or is_binary_string(line): 
+        program[i] = machine_to_asm(*split_machine_code(line))
+    program[i] = program[i].replace("\n", "")
+    program[i] = program[i].replace(",", "")
+    program[i] = program[i].replace("$", "")
+    
+print(program)
+
+# run(program)
