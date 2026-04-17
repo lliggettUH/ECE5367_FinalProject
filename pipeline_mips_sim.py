@@ -417,6 +417,32 @@ def MEM():
     MEM_WB_NEXT["pc_src"]        = pc_src        
     MEM_WB_NEXT["branch_target"] = branch_target 
 
+def WB():
+    
+    # Get Results from previous Pipeline
+    inst = MEM_WB.get("inst")
+    memToReg = MEM_WB.get("MemToReg", 0) 
+    aluResult = MEM_WB.get("alu_result", 0)
+    memData = MEM_WB.get("mem_data", 0)
+    destReg = MEM_WB.get("dest_reg", None)
+    regWrite = MEM_WB.get("RegWrite", 0)
+    pcSrc = MEM_WB.get("pc_src", 0)                 # Still don't know what do w/ these 2
+    branchTarget = MEM_WB.get("branch_target", 0)   #
+
+    # Test part 1 (finding value in reg before write back)
+    # print(f'register destReg, value {registers[destReg]}')
+
+    if regWrite and destReg is not None:
+        if destReg != "zero" and destReg != "at" and destReg != "k0" and destReg != "k1":
+            if destReg != "gp" and destReg != "sp" and destReg != "fp" and destReg != "ra":   
+                if memToReg:
+                    registers[destReg] = memData
+                else:
+                    registers[destReg] = aluResult
+    
+    # Test part 2 (See if register was updated)
+    #print(f'register destReg, value {registers[destReg]}')
+    
 def EX():
     global EX_MEM_NEXT
 
@@ -482,8 +508,8 @@ def run(program):
 
     # while pc < len(program):
     for inst in program:
-        # WB
-        MEM()
+        WB()
+        # MEM
         ID(inst) # passing raw instruction for test
         EX() 
         # IF
