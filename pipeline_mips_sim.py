@@ -616,6 +616,20 @@ def findHazard():
 def format_inst(inst):
     if inst is None:
         return "nop"
+    if isinstance(inst, str):
+        parts = inst.split()
+        if len(parts) == 0:
+            return "nop"
+        if len(parts) == 1:
+            return parts[0]
+        
+        for i in range(len(parts)):
+            if parts[i].replace("$", "") in reg_names:
+                parts[i] = f"${parts[i]}"
+
+        op = parts[0]
+        operands = parts[1:]
+        return f"{op} " + ", ".join(operands)
     if isinstance(inst, Instruction):
         return str(inst)
     return inst 
