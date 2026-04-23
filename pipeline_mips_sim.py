@@ -249,14 +249,14 @@ def split_machine_code(inst):
         inst = int(inst, 2)
     else:
         inst = int(inst, 16)
-    opcode = (inst & 0xFC000000) >> 26
-    rs     = (inst & 0x03E00000) >> 21
-    rt     = (inst & 0x001F0000) >> 16
-    rd     = (inst & 0x0000F800) >> 11
-    shamt  = (inst & 0x000007C0) >> 6
-    funct  = (inst & 0x0000003F)
-    target = inst & 0x03FFFFFF
-    imm = inst & 0x0000FFFF
+        opcode = (inst & 0xFC000000) >> 26
+        rs     = (inst & 0x03E00000) >> 21
+        rt     = (inst & 0x001F0000) >> 16
+        rd     = (inst & 0x0000F800) >> 11
+        shamt  = (inst & 0x000007C0) >> 6
+        funct  = (inst & 0x0000003F)
+        target = inst & 0x03FFFFFF
+        imm = inst & 0x0000FFFF
     if imm & 0x8000: # for signed
         imm -= 0x10000
     return opcode, rs, rt, rd, shamt, funct, target, imm
@@ -312,64 +312,92 @@ def machine_to_asm(opcode, rs, rt, rd, shamt, funct, target, imm):
 
     return readable_inst
 
+def IF():
+    global IF_ID_NEXT, pc
+    if pc < len(program):
+        IF_ID_NEXT["inst"] = program[pc]
+        IF_ID_NEXT["pc"]   = pc + 1
+        pc += 1
+    else:
+        IF_ID_NEXT["inst"] = None  # pipeline bubble
+        IF_ID_NEXT["pc"]   = pc
 
-def ID(raw_inst: str): # for testing-passing in raw instruction. in future it should pull it from global IF_ID
-    # raw_inst = IF_ID["inst"]
+def ID():
+    global ID_EX_NEXT
+
+    raw_inst = IF_ID.get("inst")
+    if raw_inst is None:  # bubble — clear the pipeline register and do nothing
+        ID_EX_NEXT["inst"]     = None
+        ID_EX_NEXT["rs"]       = None
+        ID_EX_NEXT["rt"]       = None
+        ID_EX_NEXT["rd"]       = None
+        ID_EX_NEXT["imm"]      = 0
+        ID_EX_NEXT["rs_val"]   = 0
+        ID_EX_NEXT["rt_val"]   = 0
+        ID_EX_NEXT["Branch"]   = 0
+        ID_EX_NEXT["ALUOp"]    = None
+        ID_EX_NEXT["ALUSrc"]   = 0
+        ID_EX_NEXT["MemRead"]  = 0
+        ID_EX_NEXT["MemToReg"] = 0
+        ID_EX_NEXT["MemWrite"] = 0
+        ID_EX_NEXT["RegDst"]   = 0
+        ID_EX_NEXT["RegWrite"] = 0
+        ID_EX_NEXT["pc"]       = 0
+        return
+
     raw_inst = raw_inst.replace(",", "")
     raw_inst = raw_inst.replace("$", "")
     split_inst = raw_inst.split()
     inst = Instruction()
 
-    inst.op = split_inst[0]
-    type = instruction_type_map.get(split_inst[0])
+    inst.op   = split_inst[0]
+    type      = instruction_type_map.get(split_inst[0])
     inst.type = type
 
-    if type == "R":  # rd, rs, rt
-        inst.rd   = split_inst[1]
-        inst.rs   = split_inst[2]
-        inst.rt   = split_inst[3]
-    elif type == "I": # rt, rs, imm
+    if type == "R":
+        inst.rd = split_inst[1]
+        inst.rs = split_inst[2]
+        inst.rt = split_inst[3]
+    elif type == "I":
         if inst.op not in {"lw", "lb", "lh", "sw", "sb", "sh"}:
-            inst.rt   = split_inst[1]
-            inst.rs   = split_inst[2]
-            inst.imm  = int(split_inst[3])
+            inst.rt  = split_inst[1]
+            inst.rs  = split_inst[2]
+            inst.imm = int(split_inst[3])
         else:
-            inst.rt     = split_inst[1]
-            offset_base = split_inst[2]
-            imm_part    = offset_base[:offset_base.index("(")]
-            rs_part     = offset_base[offset_base.index("(")+1 : offset_base.index(")")]
-            inst.imm    = int(imm_part)
-            inst.rs     = rs_part
+            inst.rt      = split_inst[1]
+            offset_base  = split_inst[2]
+            imm_part     = offset_base[:offset_base.index("(")]
+            rs_part      = offset_base[offset_base.index("(")+1 : offset_base.index(")")]
+            inst.imm     = int(imm_part)
+            inst.rs      = rs_part
     elif type == "J":
-        inst.addr = int(split_inst[1])
+        inst.addr = int(split_inst[1], 16) if split_inst[1].startswith("0x") else int(split_inst[1])
 
     branch = inst.op in {"beq", "bne", "bgez", "bgtz", "blez", "bltz", "bgt", "blt", "bge", "ble"}
 
-    global ID_EX_NEXT # allow for modification of global from inside function
-
-    ID_EX_NEXT["inst"]   = inst
-    # ID_EX["pc"]   = IF_ID["pc"]
-    ID_EX_NEXT["rs"]     = inst.rs
-    ID_EX_NEXT["rt"]     = inst.rt
-    ID_EX_NEXT["rd"]     = inst.rd
-    ID_EX_NEXT["imm"]    = inst.imm
-    ID_EX_NEXT["rs_val"] = registers.get(inst.rs)
-    ID_EX_NEXT["rt_val"] = registers.get(inst.rt)
-
+    ID_EX_NEXT["inst"]     = inst
+    ID_EX_NEXT["pc"]       = IF_ID["pc"]   # ← now connected
+    ID_EX_NEXT["rs"]       = inst.rs
+    ID_EX_NEXT["rt"]       = inst.rt
+    ID_EX_NEXT["rd"]       = inst.rd
+    ID_EX_NEXT["imm"]      = inst.imm
+    ID_EX_NEXT["rs_val"]   = registers.get(inst.rs, 0)
+    ID_EX_NEXT["rt_val"]   = registers.get(inst.rt, 0)
     ID_EX_NEXT["Branch"]   = 1 if branch else 0
     ID_EX_NEXT["ALUOp"]    = ALUOp_map.get(inst.op)
-    ID_EX_NEXT["ALUSrc"]   = 1 if inst.op in {"addi","addui","subi","andi","ori","xori","lui", "lw","lb","lh","sw","sb","sh"} else 0
+    ID_EX_NEXT["ALUSrc"]   = 1 if inst.op in {"addi","addui","subi","andi","ori","xori","lui",
+                                               "lw","lb","lh","sw","sb","sh"} else 0
     ID_EX_NEXT["MemRead"]  = 1 if inst.op in {"lw", "lb", "lh"} else 0
     ID_EX_NEXT["MemToReg"] = 1 if inst.op in {"lw", "lb", "lh"} else 0
     ID_EX_NEXT["MemWrite"] = 1 if inst.op in {"sw", "sb", "sh"} else 0
     ID_EX_NEXT["RegDst"]   = 1 if inst.type == "R" else 0
     ID_EX_NEXT["RegWrite"] = 1 if inst.op in {
-                                            "add","addu","sub","subu","and","or","xor","nor",
-                                            "sll","sra","slr",
-                                            "addi","addui","subi","andi","ori","xori","lui",
-                                            "lw","lb","lh",
-                                            "jal"
-                                        } else 0
+                                        "add","addu","sub","subu","and","or","xor","nor",
+                                        "sll","sra","srl",
+                                        "addi","addui","subi","andi","ori","xori","lui",
+                                        "lw","lb","lh",
+                                        "jal"
+                                    } else 0
 
 
 def MEM(): 
@@ -390,7 +418,25 @@ def MEM():
     zero = EX_MEM.get("zero",     0)
     mem_data = 0
 
-    pc_src = 1 if (branch and zero) else 0
+    alu_result = EX_MEM.get("alu_result", 0)  # already fetched above
+
+    if branch and inst:
+        op = inst.op
+        if   op == "beq" and alu_result == 0:
+            pc_src = 1
+        elif op == "bne" and alu_result != 0:
+            pc_src = 1
+        elif op == "bgt" and alu_result > 0:
+            pc_src = 1
+        elif op == "blt" and alu_result < 0:
+            pc_src = 1
+        elif op == "bge" and alu_result >= 0:
+            pc_src = 1
+        elif op == "ble" and alu_result <= 0:
+            pc_src = 1
+    else:
+        pc_src = 0
+
     if pc_src:
         pc = branch_target
 
@@ -507,15 +553,17 @@ def run(program):
     global IF_ID, IF_ID_NEXT, ID_EX, ID_EX_NEXT, EX_MEM, EX_MEM_NEXT, MEM_WB, MEM_WB_NEXT
 
     # while pc < len(program):
-    for inst in program:
-        WB()
-        # MEM
-        ID(inst) # passing raw instruction for test
-        EX() 
-        # IF
+    total_cycles = len(program) + 4
 
-        IF_ID = IF_ID_NEXT 
-        ID_EX = ID_EX_NEXT 
+    for cycle in range(total_cycles):
+        WB()
+        MEM()
+        EX()
+        ID()
+        IF()
+
+        IF_ID  = IF_ID_NEXT
+        ID_EX  = ID_EX_NEXT
         EX_MEM = EX_MEM_NEXT
         MEM_WB = MEM_WB_NEXT
 
@@ -540,9 +588,9 @@ for i in range(len(program)):
     line = program[i].strip()
     if line.startswith("0x") or is_binary_string(line): 
         program[i] = machine_to_asm(*split_machine_code(line))
-    program[i] = program[i].replace("\n", "")
-    program[i] = program[i].replace(",", "")
-    program[i] = program[i].replace("$", "")
+        program[i] = program[i].replace("\n", "")
+        program[i] = program[i].replace(",", "")
+        program[i] = program[i].replace("$", "")
     
 print(program)
 
