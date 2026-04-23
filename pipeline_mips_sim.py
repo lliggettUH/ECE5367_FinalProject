@@ -271,6 +271,26 @@ MEM_WB = { # Stores data loaded from memory, ALU output, which are passed to reg
 }
 MEM_WB_NEXT = MEM_WB.copy()
 
+label_map = {}
+cleaned_program = []
+
+def map_labels(program):
+    label_map = {}
+    cleaned_program = []
+
+    pc = 0
+    for line in program:
+        line = line.strip()
+
+        if line.endswith(":"):
+            label = line[:-1]
+            label_map[label] = pc
+        else:
+            cleaned_program.append(line)
+            pc += 1
+
+    return cleaned_program, label_map
+
 def is_binary_string(s):
     s = s.strip()
     return len(s) > 0 and all(c in "01" for c in s)
@@ -345,7 +365,7 @@ def machine_to_asm(opcode, rs, rt, rd, shamt, funct, target, imm):
 
     return readable_inst
 
-def decode(raw_inst: str) -> Instruction:
+def decode(raw_inst: str, label_map: dict) -> Instruction:
     if raw_inst is None:
         return None
 
@@ -363,17 +383,22 @@ def decode(raw_inst: str) -> Instruction:
         inst.rs = split_inst[2]
         inst.rt = split_inst[3]
     elif type == "I":
-        if inst.op not in {"lw", "lb", "lh", "sw", "sb", "sh"}:
-            inst.rt  = split_inst[1]
-            inst.rs  = split_inst[2]
-            inst.imm = int(split_inst[3])
+        if inst.op in {"lw", "sw", "lb", "sb", "lh", "sh"}:
+            inst.rt = split_inst[1]
+            offset_base = split_inst[2]
+            imm_part = offset_base[:offset_base.index("(")]
+            rs_part  = offset_base[offset_base.index("(")+1 : offset_base.index(")")]
+            inst.imm = int(imm_part)
+            inst.rs  = rs_part
+        # branch
         else:
-            inst.rt      = split_inst[1]
-            offset_base  = split_inst[2]
-            imm_part     = offset_base[:offset_base.index("(")]
-            rs_part      = offset_base[offset_base.index("(")+1 : offset_base.index(")")]
-            inst.imm     = int(imm_part)
-            inst.rs      = rs_part
+            inst.rt = split_inst[1]
+            inst.rs = split_inst[2]
+            imm = split_inst[3]
+            if imm in label_map:
+                inst.imm = label_map[imm] - pc
+            else:
+                inst.imm = int(imm)
     elif type == "J":
         inst.addr = int(split_inst[1], 16) if split_inst[1].startswith("0x") else int(split_inst[1])
 
@@ -396,6 +421,7 @@ def IF():
 
 def ID():
     global ID_EX_NEXT, pc, IF_ID_NEXT
+    global flush_idex, flush_ifid
 
     raw_inst = IF_ID.get("inst")
     if raw_inst is None or flush_idex:  # bubble — clear the pipeline register and do nothing
@@ -417,14 +443,14 @@ def ID():
         ID_EX_NEXT["pc"]       = 0
         return
 
-    inst = decode(raw_inst)
+    inst = decode(raw_inst, label_map)
 
     findHazard(inst)
 
     if stallFlag:
         id_ex_nop()
         IF_inst = raw_inst
-        pc = pc  # undo fetch
+        # pc = pc # undo fetch
         IF_ID_NEXT = IF_ID
         return
 
@@ -453,6 +479,14 @@ def ID():
                                         "lw","lb","lh",
                                         "jal"
                                     } else 0
+    
+    if inst.op == "j":
+        pc = inst.addr
+        flush_ifid = 1
+        flush_idex = 1
+        IF_ID_NEXT["inst"] = None
+        ID_EX_NEXT["inst"] = None
+        return
 
 
 def MEM(): 
@@ -495,14 +529,12 @@ def MEM():
         pc_src = 0
 
     global taken, flush_idex, flush_ifid
-    taken = 0
-    flush_ifid = 0
-    flush_idex = 0
 
     if pc_src:
         taken = 1
         flush_ifid = 1
         flush_idex = 1
+        print(f"********BRANCHING BRANCHING to {branch_target} ************")
         pc = branch_target
 
     if mem_read:
@@ -557,6 +589,19 @@ def WB():
 def EX():
     global EX_MEM_NEXT
 
+    def resolve_reg(reg, base_value):
+        # EX/MEM has priority
+        if EX_MEM.get("RegWrite") and EX_MEM.get("dst_reg") == reg and reg != "zero":
+            return EX_MEM["alu_result"], 1
+
+        # MEM/WB fallback
+        if MEM_WB.get("RegWrite") and MEM_WB.get("dest_reg") == reg and reg != "zero":
+            val = MEM_WB["mem_data"] if MEM_WB.get("MemToReg") else MEM_WB["alu_result"]
+            return val, 2
+
+        # register file
+        return base_value, 0
+
     # Printing test input values from ID_EX for debugging
     # print(f"EX | {ID_EX['inst'].op:4} | rs={ID_EX['rs']}({ID_EX['rs_val']}) "
       # f"rt={ID_EX['rt']}({ID_EX['rt_val']}) imm={ID_EX['imm']} "
@@ -575,36 +620,18 @@ def EX():
     forwardA = 0
     forwardB = 0
 
-    # EX hazard (from EX/MEM)
-    if EX_MEM.get("RegWrite", 0) and EX_MEM.get("dst_reg") is not None and EX_MEM["dst_reg"] != "zero":
-        if EX_MEM["dst_reg"] == rs:
-            A = EX_MEM["alu_result"]
-            forwardA = 1
+    # ALUSrc first (only affects B base value)
+    A_base = ID_EX["rs_val"]
+    B_base = ID_EX["imm"] if ID_EX["ALUSrc"] else ID_EX["rt_val"]
 
-    # MEM hazard (from MEM/WB)
-    if MEM_WB.get("RegWrite", 0) and MEM_WB.get("dest_reg") is not None and MEM_WB["dest_reg"] != "zero":
-        if MEM_WB["dest_reg"] == rs:
-            forwardA = 2
-            if MEM_WB.get("MemToReg"):
-                A = MEM_WB["mem_data"]
-            else:
-                A = MEM_WB["alu_result"]
+    # resolve operands independently BUT consistently
+    A, forwardA = resolve_reg(rs, A_base)
 
-    if not ID_EX["ALUSrc"]:
-        # EX hazard
-        if EX_MEM.get("RegWrite", 0) and EX_MEM.get("dst_reg") is not None and EX_MEM["dst_reg"] != "zero":
-            if EX_MEM["dst_reg"] == rt:
-                B = EX_MEM["alu_result"]
-                forwardB = 1
-
-        # MEM hazard
-        elif MEM_WB.get("RegWrite", 0) and MEM_WB.get("dest_reg") is not None and MEM_WB["dest_reg"] != "zero":
-            if MEM_WB["dest_reg"] == rt:
-                forwardB = 2
-                if MEM_WB.get("MemToReg"):
-                    B = MEM_WB["mem_data"]
-                else:
-                    B = MEM_WB["alu_result"]
+    if ID_EX["ALUSrc"]:
+        B = B_base
+        forwardB = 0
+    else:
+        B, forwardB = resolve_reg(rt, B_base)
 
     # RegDst MUX: 1 → rd (R-type), 0 → rt (I-type)
     dst_reg = ID_EX["rd"] if ID_EX["RegDst"] else ID_EX["rt"]
@@ -632,6 +659,7 @@ def EX():
     if ID_EX["Branch"]:
         imm = ID_EX["imm"] if ID_EX["imm"] is not None else 0
         branch_target = ID_EX["pc"] + imm
+        print(f"*******************BRANCH {ID_EX["pc"]} + {imm}")
     else:
         branch_target = 0
 
@@ -729,9 +757,6 @@ def run(program):
     global IF_ID, IF_ID_NEXT, ID_EX, ID_EX_NEXT, EX_MEM, EX_MEM_NEXT, MEM_WB, MEM_WB_NEXT
     global taken, flush_idex, flush_ifid, forwardA, forwardB
 
-    # while pc < len(program):
-    # total_cycles = len(program) + 4
-
     current_cycle = 1
 
     while True:
@@ -757,21 +782,17 @@ def run(program):
         EX_MEM = EX_MEM_NEXT.copy()
         MEM_WB = MEM_WB_NEXT.copy()
 
-        # forwardA   = 0  # TODO: compare EX_MEM/MEM_WB dst_reg against ID_EX rs
-        # forwardB   = 0  # TODO: compare EX_MEM/MEM_WB dst_reg against ID_EX rt
+        taken = 0
+        flush_ifid = 0
+        flush_idex = 0
 
         current_cycle += 1
 
+        if current_cycle > 50:
+            break
+
         if IF_ID.get('inst') is None and ID_EX.get('inst') is None and EX_MEM.get('inst') is None and MEM_WB.get('inst') is None:
             break
-        
-        # Also need to save and print:
-        # flush_ifid, flush_idex, taken,
-        # forwardA, forwardB, 
-        # and next_pc
-
-
-
 
 # program = [
 #     "addi $t0, $zero, 1",
@@ -788,9 +809,14 @@ stall_program = [
     "add  $t2, $t0, $t1",
     "lw   $t3, 0($t2)",
     "add  $t4, $t3, $t1",
+    "addi $t0, $zero, 1",
+    "addi $t4, $zero, 3",
+    "loop:",
+    "sub $t4, $t4, $t0",
+    "bne $t4, $zero, loop",
     "lw   $t5, 4($t3)",
     "add  $t6, $t5, $t0", 
-    "addi $t7, $t6, 1",
+    "addi $t7, $t6, 1",      
     "add  $s0, $t7, $t1",
     "beq  $s0, $t1, 8",
     "add  $s1, $s0, $t0", 
@@ -809,15 +835,18 @@ program_path = "sample_machine2a.asm"
 # with open(program_path, "r") as f:
 #     program = f.readlines()
 
-# Clean instructions for parsing
-for i in range(len(program)):
-    line = program[i].strip()
-    if line.startswith("0x") or is_binary_string(line): 
-        program[i] = machine_to_asm(*split_machine_code(line))
-        program[i] = program[i].replace("\n", "")
-        program[i] = program[i].replace(",", "")
-        program[i] = program[i].replace("$", "")
-    
-# print(program)
+cleaned_program, label_map = map_labels(program)
 
-run(program)
+# Clean instructions for parsing
+for i in range(len(cleaned_program)):
+    line = cleaned_program[i].strip()
+    if line.startswith("0x") or is_binary_string(line): 
+        cleaned_program[i] = machine_to_asm(*split_machine_code(line))
+        cleaned_program[i] = cleaned_program[i].replace("\n", "")
+        cleaned_program[i] = cleaned_program[i].replace(",", "")
+        cleaned_program[i] = cleaned_program[i].replace("$", "")
+    
+# print(cleaned_program)
+# print(label_map)
+
+run(cleaned_program)
