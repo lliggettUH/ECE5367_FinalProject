@@ -201,7 +201,7 @@ registers = {
     "ra"  : 0, # return address pointer
 }
 pc = 0
-stallFlag = 0;
+stallFlag = 0
 stack = [0] * 1024 
 
 # Pipeline registers (global variables)
