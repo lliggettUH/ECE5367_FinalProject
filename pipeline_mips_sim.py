@@ -553,31 +553,30 @@ def EX():
 def findHazard():
     global stallFlag, ID_EX_NEXT
 
-    if ID_EX.get("MemRead", 0):
-            if ID_EX.get("rt") is not None and ID_EX.get("rt") in (ID_EX_NEXT.get("rs"), ID_EX_NEXT.get("rt")):
-                    stallFlag = True;
-
-            # INSTRUCTION OF ID_EX_NEXT is NOP, set all other fields to 0
-            ID_EX_NEXT["inst"]     = None
-            ID_EX_NEXT["pc"]       = 0
-            ID_EX_NEXT["rs"]       = None
-            ID_EX_NEXT["rt"]       = None
-            ID_EX_NEXT["rd"]       = None
-            ID_EX_NEXT["rs_val"]   = 0
-            ID_EX_NEXT["rt_val"]   = 0
-            ID_EX_NEXT["imm"]      = 0
-            ID_EX_NEXT["RegDst"]   = 0
-            ID_EX_NEXT["ALUSrc"]   = 0
-            ID_EX_NEXT["ALUOp"]    = None
-            ID_EX_NEXT["MemRead"]  = 0
-            ID_EX_NEXT["MemWrite"] = 0
-            ID_EX_NEXT["RegWrite"] = 0
-            ID_EX_NEXT["MemToReg"] = 0
-            ID_EX_NEXT["Branch"]   = 0
-            return
-    
-    # else, there is no stall
+    # stall starts false because that is the usual case
     stallFlag = False
+
+    if ID_EX.get("MemRead", 0):
+            if ID_EX.get("rt") is not None and ID_EX.get("rt") in (IF_ID.get("rs"), IF_ID.get("rt")):
+                stallFlag = True
+                # INSTRUCTION OF ID_EX_NEXT is NOP, set all other fields to 0
+                ID_EX_NEXT["inst"]     = None
+                ID_EX_NEXT["pc"]       = 0
+                ID_EX_NEXT["rs"]       = None
+                ID_EX_NEXT["rt"]       = None
+                ID_EX_NEXT["rd"]       = None
+                ID_EX_NEXT["rs_val"]   = 0
+                ID_EX_NEXT["rt_val"]   = 0
+                ID_EX_NEXT["imm"]      = 0
+                ID_EX_NEXT["RegDst"]   = 0
+                ID_EX_NEXT["ALUSrc"]   = 0
+                ID_EX_NEXT["ALUOp"]    = None
+                ID_EX_NEXT["MemRead"]  = 0
+                ID_EX_NEXT["MemWrite"] = 0
+                ID_EX_NEXT["RegWrite"] = 0
+                ID_EX_NEXT["MemToReg"] = 0
+                ID_EX_NEXT["Branch"]   = 0
+                return
 
 def run(program): 
     global IF_ID, IF_ID_NEXT, ID_EX, ID_EX_NEXT, EX_MEM, EX_MEM_NEXT, MEM_WB, MEM_WB_NEXT
