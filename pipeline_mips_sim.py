@@ -201,6 +201,8 @@ registers = {
     "ra"  : 0, # return address pointer
 }
 pc = 0
+stallFlag = 0
+current_cycle = 1
 stack = [0] * 1024 
 
 # Pipeline registers (global variables)
@@ -403,7 +405,6 @@ def ID():
                                         "jal"
                                     } else 0
 
-
 def MEM(): 
     global MEM_WB_NEXT, stack, pc
 
@@ -553,17 +554,77 @@ def EX():
 
     # print("EX result:", alu_result, "dest:", dst_reg)
 
-def run(program): 
-    global IF_ID, IF_ID_NEXT, ID_EX, ID_EX_NEXT, EX_MEM, EX_MEM_NEXT, MEM_WB, MEM_WB_NEXT
+def findHazard():
+    global stallFlag, ID_EX_NEXT
 
-    # while pc < len(program):
+    # stall starts false because that is the usual case
+    stallFlag = False
+
+    if ID_EX.get("MemRead", 0):
+            if ID_EX.get("rt") is not None and ID_EX.get("rt") in (IF_ID.get("rs"), IF_ID.get("rt")):
+                stallFlag = True
+                # INSTRUCTION OF ID_EX_NEXT is NOP, set all other fields to 0
+                ID_EX_NEXT["inst"]     = None
+                ID_EX_NEXT["pc"]       = 0
+                ID_EX_NEXT["rs"]       = None
+                ID_EX_NEXT["rt"]       = None
+                ID_EX_NEXT["rd"]       = None
+                ID_EX_NEXT["rs_val"]   = 0
+                ID_EX_NEXT["rt_val"]   = 0
+                ID_EX_NEXT["imm"]      = 0
+                ID_EX_NEXT["RegDst"]   = 0
+                ID_EX_NEXT["ALUSrc"]   = 0
+                ID_EX_NEXT["ALUOp"]    = None
+                ID_EX_NEXT["MemRead"]  = 0
+                ID_EX_NEXT["MemWrite"] = 0
+                ID_EX_NEXT["RegWrite"] = 0
+                ID_EX_NEXT["MemToReg"] = 0
+                ID_EX_NEXT["Branch"]   = 0
+                return
+
+def format_inst(inst):
+    if inst is None:
+        return "nop"
+    if isinstance(inst, Instruction):
+        op = inst.op
+        if inst.type == "R":
+            return f"{op} ${inst.rd}, ${inst.rs}, ${inst.rt}"
+        elif inst.type == "I":
+            if op in {"lw", "lb", "lh", "sw", "sb", "sh"}:
+                return f"{op} ${inst.rt}, {inst.imm}(${inst.rs})"
+            else:
+                return f"{op} ${inst.rt}, ${inst.rs}, {inst.imm}"
+        elif inst.type == "J":
+            return f"{op} {inst.addr}"
+    if isinstance(inst, str):
+        if not inst.strip():
+            return "nop"
+        parts = inst.split()
+        op = parts[0]
+        operands = []
+        for p in parts[1:]:
+            if p in reg_names:
+                operands.append(f"${p}")
+            else:
+                operands.append(p)
+        return f"{op} " + ", ".join(operands)
+    return "nop"
+
+def run(program):
+    global IF_ID, IF_ID_NEXT, ID_EX, ID_EX_NEXT, EX_MEM, EX_MEM_NEXT, MEM_WB, MEM_WB_NEXT
+    global current_cycle, stallFlag, pc
+
     total_cycles = len(program) + 4
 
     for cycle in range(total_cycles):
+
+        wb_inst = MEM_WB.get("inst")
+
         WB()
         MEM()
         EX()
         ID()
+        findHazard()
         IF()
 
         IF_ID  = IF_ID_NEXT
@@ -571,14 +632,27 @@ def run(program):
         EX_MEM = EX_MEM_NEXT
         MEM_WB = MEM_WB_NEXT
 
-# program = [
-#     "addi $t0, $zero, 1",
-#     "addi $t1, $zero, 2",   
-#     "add  $t2, $t1,  $t0",
-#     "add  $t3, $t2,  $t1",
-#     "lw   $t4, 4($t1)",
-#     "j 1000",
-# ]
+        next_pc_str = f"0x{(pc * 4):08x}"
+
+        forwardA   = "none"  # TODO: compare EX_MEM/MEM_WB dst_reg against ID_EX rs
+        forwardB   = "none"  # TODO: compare EX_MEM/MEM_WB dst_reg against ID_EX rt
+        flush_ifid = False   # TODO: set True when branch taken, squashes incorrect IF stage fetch
+        flush_idex = False   # TODO: set True when branch taken, squashes incorrect ID stage decode
+        taken      = False   # TODO: set to MEM_WB.get("pc_src", 0) == 1 after MEM runs
+
+        print(f"Cycle {current_cycle}")
+        print(f"  IF : {format_inst(IF_ID.get('inst'))}")
+        print(f"  ID : {format_inst(ID_EX.get('inst'))}")
+        print(f"  EX : {format_inst(EX_MEM.get('inst'))}")
+        print(f"  MEM: {format_inst(MEM_WB.get('inst'))}")
+        print(f"  WB : nop" if MEM_WB.get('inst') is None else f"  WB : {format_inst(MEM_WB.get('inst'))}")
+        print(f"  stall={stallFlag} flush_ifid={flush_ifid} flush_idex={flush_idex} taken={taken}")
+        print(f"  forwardA={forwardA} forwardB={forwardB}")
+        print(f"  next_pc={next_pc_str}")
+        print()
+
+        current_cycle += 1
+
 
 program = []
 
@@ -601,6 +675,6 @@ for i in range(len(program)):
     program[i] = program[i].replace("$", "")
 program = [inst for inst in program if inst.strip()]
     
-print(program)
+# print(program) used for debugging
 
-# run(program)
+run(program)
