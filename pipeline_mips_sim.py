@@ -224,14 +224,22 @@ registers = {
     "ra"  : 0, # return address pointer
 }
 pc = 0
-stallFlag = 0
+stallFlag = False
 stack = [0] * 1024 
+
+flush_ifid = 0
+flush_idex = 0
+taken = 0
+forwardA = 0
+forwardB = 0
+
+IF_inst = None
 
 # Pipeline registers (global variables)
 IF_ID  = { # Holds fetched instruction and incremented PC (PC + 1)
 
 } 
-IF_ID_NEXT = IF_ID
+IF_ID_NEXT = IF_ID.copy()
 
 ID_EX = { # Stores decoded instruction info
     "inst": None, 
@@ -251,17 +259,17 @@ ID_EX = { # Stores decoded instruction info
     "MemToReg": 0,
     "Branch": 0,
 } 
-ID_EX_NEXT = ID_EX
+ID_EX_NEXT = ID_EX.copy()
 
 EX_MEM = { # Holds ALU result, branch target, data for storing, and destination register
 
 } 
-EX_MEM_NEXT = EX_MEM
+EX_MEM_NEXT = EX_MEM.copy()
 
 MEM_WB = { # Stores data loaded from memory, ALU output, which are passed to register file for final write back
     
 }
-MEM_WB_NEXT = MEM_WB
+MEM_WB_NEXT = MEM_WB.copy()
 
 def is_binary_string(s):
     s = s.strip()
@@ -337,47 +345,9 @@ def machine_to_asm(opcode, rs, rt, rd, shamt, funct, target, imm):
 
     return readable_inst
 
-def IF():
-    findHazard()
-    global IF_ID_NEXT, pc, IF_CURR_INST
-    if stallFlag == True:
-        IF_ID_NEXT = IF_ID
-    else:
-        if pc < len(program):
-            IF_ID_NEXT["inst"] = program[pc]  # for result printing
-            IF_CURR_INST = program[pc]
-            IF_ID_NEXT["pc"]   = pc + 1
-            pc += 1
-        else:
-            IF_ID_NEXT["inst"] = None  # pipeline bubble
-            IF_ID_NEXT["pc"]   = pc
-            IF_CURR_INST = "nop"  # for result printing
-
-def ID():
-    global ID_EX_NEXT, ID_CURR_INST
-
-    raw_inst = IF_ID.get("inst")
-    if raw_inst is None:  # bubble — clear the pipeline register and do nothing
-        ID_CURR_INST = "nop" # for result printing
-        ID_EX_NEXT["inst"]     = None
-        ID_EX_NEXT["rs"]       = None
-        ID_EX_NEXT["rt"]       = None
-        ID_EX_NEXT["rd"]       = None
-        ID_EX_NEXT["imm"]      = 0
-        ID_EX_NEXT["rs_val"]   = 0
-        ID_EX_NEXT["rt_val"]   = 0
-        ID_EX_NEXT["Branch"]   = 0
-        ID_EX_NEXT["ALUOp"]    = None
-        ID_EX_NEXT["ALUSrc"]   = 0
-        ID_EX_NEXT["MemRead"]  = 0
-        ID_EX_NEXT["MemToReg"] = 0
-        ID_EX_NEXT["MemWrite"] = 0
-        ID_EX_NEXT["RegDst"]   = 0
-        ID_EX_NEXT["RegWrite"] = 0
-        ID_EX_NEXT["pc"]       = 0
-        return
-
-    ID_CURR_INST = raw_inst
+def decode(raw_inst: str) -> Instruction:
+    if raw_inst is None:
+        return None
 
     raw_inst = raw_inst.replace(",", "")
     raw_inst = raw_inst.replace("$", "")
@@ -407,6 +377,57 @@ def ID():
     elif type == "J":
         inst.addr = int(split_inst[1], 16) if split_inst[1].startswith("0x") else int(split_inst[1])
 
+    return inst
+
+def IF():
+    global IF_ID_NEXT, pc, IF_inst
+
+    if stallFlag:
+        return
+
+    elif pc < len(program) and not flush_ifid:
+        IF_inst = program[pc]
+        IF_ID_NEXT["inst"] = program[pc]  # for result printing
+        IF_ID_NEXT["pc"]   = pc + 1
+        pc += 1
+    else:
+        IF_inst = None
+        IF_ID_NEXT["inst"] = None  # pipeline bubble
+
+def ID():
+    global ID_EX_NEXT, pc, IF_ID_NEXT
+
+    raw_inst = IF_ID.get("inst")
+    if raw_inst is None or flush_idex:  # bubble — clear the pipeline register and do nothing
+        ID_EX_NEXT["inst"]     = None
+        ID_EX_NEXT["rs"]       = None
+        ID_EX_NEXT["rt"]       = None
+        ID_EX_NEXT["rd"]       = None
+        ID_EX_NEXT["imm"]      = 0
+        ID_EX_NEXT["rs_val"]   = 0
+        ID_EX_NEXT["rt_val"]   = 0
+        ID_EX_NEXT["Branch"]   = 0
+        ID_EX_NEXT["ALUOp"]    = None
+        ID_EX_NEXT["ALUSrc"]   = 0
+        ID_EX_NEXT["MemRead"]  = 0
+        ID_EX_NEXT["MemToReg"] = 0
+        ID_EX_NEXT["MemWrite"] = 0
+        ID_EX_NEXT["RegDst"]   = 0
+        ID_EX_NEXT["RegWrite"] = 0
+        ID_EX_NEXT["pc"]       = 0
+        return
+
+    inst = decode(raw_inst)
+
+    findHazard(inst)
+
+    if stallFlag:
+        id_ex_nop()
+        IF_inst = raw_inst
+        pc = pc  # undo fetch
+        IF_ID_NEXT = IF_ID
+        return
+
     branch = inst.op in {"beq", "bne", "bgez", "bgtz", "blez", "bltz", "bgt", "blt", "bge", "ble"}
 
     ID_EX_NEXT["inst"]     = inst
@@ -435,7 +456,7 @@ def ID():
 
 
 def MEM(): 
-    global MEM_WB_NEXT, stack, pc, MEM_CURR_INST
+    global MEM_WB_NEXT, stack, pc
 
     # grabbing results from previous pipeline output
     alu_result = EX_MEM.get("alu_result", 0)
@@ -473,7 +494,15 @@ def MEM():
     else:
         pc_src = 0
 
+    global taken, flush_idex, flush_ifid
+    taken = 0
+    flush_ifid = 0
+    flush_idex = 0
+
     if pc_src:
+        taken = 1
+        flush_ifid = 1
+        flush_idex = 1
         pc = branch_target
 
     if mem_read:
@@ -539,6 +568,44 @@ def EX():
     # ALUSrc MUX: 1 → use immediate, 0 → use rt_val
     B = ID_EX["imm"] if ID_EX["ALUSrc"] else ID_EX["rt_val"]
 
+    # forwarding
+    global forwardA, forwardB
+    rs = ID_EX.get('rs')
+    rt = ID_EX.get('rt')
+    forwardA = 0
+    forwardB = 0
+
+    # EX hazard (from EX/MEM)
+    if EX_MEM.get("RegWrite", 0) and EX_MEM.get("dst_reg") is not None and EX_MEM["dst_reg"] != "zero":
+        if EX_MEM["dst_reg"] == rs:
+            A = EX_MEM["alu_result"]
+            forwardA = 1
+
+    # MEM hazard (from MEM/WB)
+    if MEM_WB.get("RegWrite", 0) and MEM_WB.get("dest_reg") is not None and MEM_WB["dest_reg"] != "zero":
+        if MEM_WB["dest_reg"] == rs:
+            forwardA = 2
+            if MEM_WB.get("MemToReg"):
+                A = MEM_WB["mem_data"]
+            else:
+                A = MEM_WB["alu_result"]
+
+    if not ID_EX["ALUSrc"]:
+        # EX hazard
+        if EX_MEM.get("RegWrite", 0) and EX_MEM.get("dst_reg") is not None and EX_MEM["dst_reg"] != "zero":
+            if EX_MEM["dst_reg"] == rt:
+                B = EX_MEM["alu_result"]
+                forwardB = 1
+
+        # MEM hazard
+        elif MEM_WB.get("RegWrite", 0) and MEM_WB.get("dest_reg") is not None and MEM_WB["dest_reg"] != "zero":
+            if MEM_WB["dest_reg"] == rt:
+                forwardB = 2
+                if MEM_WB.get("MemToReg"):
+                    B = MEM_WB["mem_data"]
+                else:
+                    B = MEM_WB["alu_result"]
+
     # RegDst MUX: 1 → rd (R-type), 0 → rt (I-type)
     dst_reg = ID_EX["rd"] if ID_EX["RegDst"] else ID_EX["rt"]
 
@@ -585,33 +652,43 @@ def EX():
 
     # print("EX result:", alu_result, "dest:", dst_reg)
 
-def findHazard():
+def findHazard(inst):
     global stallFlag, ID_EX_NEXT
 
-    # stall starts false because that is the usual case
     stallFlag = False
 
-    if ID_EX.get("MemRead", 0):
-            if ID_EX.get("rt") is not None and ID_EX.get("rt") in (IF_ID.get("rs"), IF_ID.get("rt")):
-                stallFlag = True
-                # INSTRUCTION OF ID_EX_NEXT is NOP, set all other fields to 0
-                ID_EX_NEXT["inst"]     = None
-                ID_EX_NEXT["pc"]       = 0
-                ID_EX_NEXT["rs"]       = None
-                ID_EX_NEXT["rt"]       = None
-                ID_EX_NEXT["rd"]       = None
-                ID_EX_NEXT["rs_val"]   = 0
-                ID_EX_NEXT["rt_val"]   = 0
-                ID_EX_NEXT["imm"]      = 0
-                ID_EX_NEXT["RegDst"]   = 0
-                ID_EX_NEXT["ALUSrc"]   = 0
-                ID_EX_NEXT["ALUOp"]    = None
-                ID_EX_NEXT["MemRead"]  = 0
-                ID_EX_NEXT["MemWrite"] = 0
-                ID_EX_NEXT["RegWrite"] = 0
-                ID_EX_NEXT["MemToReg"] = 0
-                ID_EX_NEXT["Branch"]   = 0
-                return
+    # Load hazard (need to stall for one cycle)
+    producer = ID_EX.get("rt")     
+    producer_memread = ID_EX.get("MemRead", 0)
+
+    rs = inst.rs # same as IF_ID rs
+    rt = inst.rt # same as IF_ID rt
+
+    if producer_memread and producer is not None:
+        if producer == rs or producer == rt and producer != 'zero':
+            stallFlag = True
+
+def id_ex_nop():
+    global ID_EX_NEXT
+
+    ID_EX_NEXT = {
+    "inst": None,
+    "rs": None,
+    "rt": None,
+    "rd": None,
+    "imm": 0,
+    "rs_val": 0,
+    "rt_val": 0,
+    "ALUOp": None,
+    "RegWrite": 0,
+    "MemRead": 0,
+    "MemWrite": 0,
+    "MemToReg": 0,
+    "RegDst": 0,
+    "ALUSrc": 0,
+    "Branch": 0,
+    "pc": 0
+}
             
 def format_inst(inst):
     if inst is None:
@@ -623,52 +700,76 @@ def format_inst(inst):
         if len(parts) == 1:
             return parts[0]
         
-        for i in range(len(parts)):
-            if parts[i].replace("$", "") in reg_names:
-                parts[i] = f"${parts[i]}"
-
         op = parts[0]
         operands = parts[1:]
-        return f"{op} " + ", ".join(operands)
+        correct_operands = []
+
+        for i in range(len(operands)):
+            operands[i] = operands[i].replace(",", "")
+            if operands[i].replace("$", "") in reg_names:
+                correct_operands.append(f"${operands[i]}")
+            else:
+                correct_operands.append(operands[i])
+            
+
+        return f"{op} " + ", ".join(correct_operands)
     if isinstance(inst, Instruction):
         return str(inst)
     return inst 
 
+def fmt_forward(forward: int) -> str:
+    if forward == 0:
+        return "ID/EX"
+    elif forward == 1:
+        return "EX/MEM"
+    elif forward == 2:
+        return "MEM/WB"
+
 def run(program): 
     global IF_ID, IF_ID_NEXT, ID_EX, ID_EX_NEXT, EX_MEM, EX_MEM_NEXT, MEM_WB, MEM_WB_NEXT
+    global taken, flush_idex, flush_ifid, forwardA, forwardB
 
     # while pc < len(program):
-    total_cycles = len(program) + 4
+    # total_cycles = len(program) + 4
 
     current_cycle = 1
 
-    for cycle in range(total_cycles):
+    while True:
         WB()
         MEM()
         EX()
         ID()
         IF()
 
-        IF_ID  = IF_ID_NEXT
-        ID_EX  = ID_EX_NEXT
-        EX_MEM = EX_MEM_NEXT
-        MEM_WB = MEM_WB_NEXT
-
         print(f"Cycle {current_cycle}")
 
-        print(f"IF  : {format_inst(IF_ID.get('inst'))}")
-        print(f"ID  : {format_inst(ID_EX.get('inst'))}")
-        print(f"EX  : {format_inst(EX_MEM.get('inst'))}")
-        print(f"MEM : {format_inst(MEM_WB.get('inst'))}")
+        print(f"IF  : {IF_inst if IF_inst is not None else "nop"}")
+        print(f"ID  : {IF_ID.get('inst') if IF_ID.get('inst') is not None else "nop"}")
+        print(f"EX  : {format_inst(ID_EX.get('inst'))}")
+        print(f"MEM : {format_inst(EX_MEM.get('inst'))}")
         print(f"WB  : {format_inst(MEM_WB.get('inst'))}")
-        print(f"Stalled: {stallFlag}") 
+        print(f"stall={stallFlag} flush_ifid={flush_ifid} flush_idex={flush_idex} taken={taken}")
+        print(f"forwardA={fmt_forward(forwardA)} forwardB={fmt_forward(forwardB)}")
+        print(f"Next PC: 0x{(pc * 4):08x}\n")
 
+        IF_ID  = IF_ID_NEXT.copy()
+        ID_EX  = ID_EX_NEXT.copy()
+        EX_MEM = EX_MEM_NEXT.copy()
+        MEM_WB = MEM_WB_NEXT.copy()
+
+        # forwardA   = 0  # TODO: compare EX_MEM/MEM_WB dst_reg against ID_EX rs
+        # forwardB   = 0  # TODO: compare EX_MEM/MEM_WB dst_reg against ID_EX rt
+
+        current_cycle += 1
+
+        if IF_ID.get('inst') is None and ID_EX.get('inst') is None and EX_MEM.get('inst') is None and MEM_WB.get('inst') is None:
+            break
+        
         # Also need to save and print:
         # flush_ifid, flush_idex, taken,
         # forwardA, forwardB, 
         # and next_pc
 
-        current_cycle += 1
 
 
 
@@ -681,12 +782,32 @@ def run(program):
 #     "j 1000",
 # ]
 
-program = []
+stall_program = [
+    "addi $t0, $zero, 5",
+    "addi $t1, $zero, 10",
+    "add  $t2, $t0, $t1",
+    "lw   $t3, 0($t2)",
+    "add  $t4, $t3, $t1",
+    "lw   $t5, 4($t3)",
+    "add  $t6, $t5, $t0", 
+    "addi $t7, $t6, 1",
+    "add  $s0, $t7, $t1",
+    "beq  $s0, $t1, 8",
+    "add  $s1, $s0, $t0", 
+    "j 1000",
+]
+
+# stall_program = [
+#     "lw $t0, 0($t1)",
+#     "addi $t2, $t0, 10"
+# ]
+
+program = stall_program
 
 program_path = "sample_machine2a.asm"
 
-with open(program_path, "r") as f:
-    program = f.readlines()
+# with open(program_path, "r") as f:
+#     program = f.readlines()
 
 # Clean instructions for parsing
 for i in range(len(program)):
