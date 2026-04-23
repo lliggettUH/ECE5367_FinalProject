@@ -11,6 +11,29 @@ class Instruction:
     imm : Optional[int] = None # only if I type
     addr: Optional[int] = None # only if J tpye
 
+    def __str__(self):
+        if self.op is None:
+            return "nop"
+
+        # R-type:
+        if self.type == "R":
+            return f"{self.op} ${self.rd}, ${self.rs}, ${self.rt}"
+
+        # I-type
+        elif self.type == "I":
+            if self.op in ("lw", "sw"):
+                return f"{self.op} ${self.rt}, {self.imm}(${self.rs})"
+            elif self.op in ("beq", "bne"):
+                return f"{self.op} ${self.rs}, ${self.rt}, {self.imm}"
+            else:
+                return f"{self.op} ${self.rt}, ${self.rs}, {self.imm}"
+
+        # J-type: j addr
+        elif self.type == "J":
+            return f"{self.op} {self.addr}"
+
+        return "unknown"
+
 instruction_type_map = {
     "add" : "R",
     "addu": "R",
@@ -250,14 +273,15 @@ def split_machine_code(inst):
         inst = int(inst, 2)
     else:
         inst = int(inst, 16)
-        opcode = (inst & 0xFC000000) >> 26
-        rs     = (inst & 0x03E00000) >> 21
-        rt     = (inst & 0x001F0000) >> 16
-        rd     = (inst & 0x0000F800) >> 11
-        shamt  = (inst & 0x000007C0) >> 6
-        funct  = (inst & 0x0000003F)
-        target = inst & 0x03FFFFFF
-        imm = inst & 0x0000FFFF
+
+    opcode = (inst & 0xFC000000) >> 26
+    rs     = (inst & 0x03E00000) >> 21
+    rt     = (inst & 0x001F0000) >> 16
+    rd     = (inst & 0x0000F800) >> 11
+    shamt  = (inst & 0x000007C0) >> 6
+    funct  = (inst & 0x0000003F)
+    target = inst & 0x03FFFFFF
+    imm = inst & 0x0000FFFF
     if imm & 0x8000: # for signed
         imm -= 0x10000
     return opcode, rs, rt, rd, shamt, funct, target, imm
@@ -315,23 +339,26 @@ def machine_to_asm(opcode, rs, rt, rd, shamt, funct, target, imm):
 
 def IF():
     findHazard()
-    global IF_ID_NEXT, pc
+    global IF_ID_NEXT, pc, IF_CURR_INST
     if stallFlag == True:
         IF_ID_NEXT = IF_ID
     else:
         if pc < len(program):
-            IF_ID_NEXT["inst"] = program[pc]
+            IF_ID_NEXT["inst"] = program[pc]  # for result printing
+            IF_CURR_INST = program[pc]
             IF_ID_NEXT["pc"]   = pc + 1
             pc += 1
         else:
             IF_ID_NEXT["inst"] = None  # pipeline bubble
             IF_ID_NEXT["pc"]   = pc
+            IF_CURR_INST = "nop"  # for result printing
 
 def ID():
-    global ID_EX_NEXT
+    global ID_EX_NEXT, ID_CURR_INST
 
     raw_inst = IF_ID.get("inst")
     if raw_inst is None:  # bubble — clear the pipeline register and do nothing
+        ID_CURR_INST = "nop" # for result printing
         ID_EX_NEXT["inst"]     = None
         ID_EX_NEXT["rs"]       = None
         ID_EX_NEXT["rt"]       = None
@@ -349,6 +376,8 @@ def ID():
         ID_EX_NEXT["RegWrite"] = 0
         ID_EX_NEXT["pc"]       = 0
         return
+
+    ID_CURR_INST = raw_inst
 
     raw_inst = raw_inst.replace(",", "")
     raw_inst = raw_inst.replace("$", "")
@@ -406,7 +435,7 @@ def ID():
 
 
 def MEM(): 
-    global MEM_WB_NEXT, stack, pc
+    global MEM_WB_NEXT, stack, pc, MEM_CURR_INST
 
     # grabbing results from previous pipeline output
     alu_result = EX_MEM.get("alu_result", 0)
@@ -424,6 +453,8 @@ def MEM():
     mem_data = 0
 
     alu_result = EX_MEM.get("alu_result", 0)  # already fetched above
+
+    pc_src = 0
 
     if branch and inst:
         op = inst.op
@@ -581,12 +612,21 @@ def findHazard():
                 ID_EX_NEXT["MemToReg"] = 0
                 ID_EX_NEXT["Branch"]   = 0
                 return
+            
+def format_inst(inst):
+    if inst is None:
+        return "nop"
+    if isinstance(inst, Instruction):
+        return str(inst)
+    return inst 
 
 def run(program): 
     global IF_ID, IF_ID_NEXT, ID_EX, ID_EX_NEXT, EX_MEM, EX_MEM_NEXT, MEM_WB, MEM_WB_NEXT
 
     # while pc < len(program):
     total_cycles = len(program) + 4
+
+    current_cycle = 1
 
     for cycle in range(total_cycles):
         WB()
@@ -599,6 +639,24 @@ def run(program):
         ID_EX  = ID_EX_NEXT
         EX_MEM = EX_MEM_NEXT
         MEM_WB = MEM_WB_NEXT
+
+        print(f"Cycle {current_cycle}")
+
+        print(f"IF  : {format_inst(IF_ID.get('inst'))}")
+        print(f"ID  : {format_inst(ID_EX.get('inst'))}")
+        print(f"EX  : {format_inst(EX_MEM.get('inst'))}")
+        print(f"MEM : {format_inst(MEM_WB.get('inst'))}")
+        print(f"WB  : {format_inst(MEM_WB.get('inst'))}")
+        print(f"Stalled: {stallFlag}") 
+
+        # Also need to save and print:
+        # flush_ifid, flush_idex, taken,
+        # forwardA, forwardB, 
+        # and next_pc
+
+        current_cycle += 1
+
+
 
 # program = [
 #     "addi $t0, $zero, 1",
@@ -625,6 +683,6 @@ for i in range(len(program)):
         program[i] = program[i].replace(",", "")
         program[i] = program[i].replace("$", "")
     
-print(program)
+# print(program)
 
-# run(program)
+run(program)
