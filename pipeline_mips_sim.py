@@ -314,14 +314,18 @@ def machine_to_asm(opcode, rs, rt, rd, shamt, funct, target, imm):
     return readable_inst
 
 def IF():
+    findHazard()
     global IF_ID_NEXT, pc
-    if pc < len(program):
-        IF_ID_NEXT["inst"] = program[pc]
-        IF_ID_NEXT["pc"]   = pc + 1
-        pc += 1
+    if stallFlag == True:
+        IF_ID_NEXT = IF_ID
     else:
-        IF_ID_NEXT["inst"] = None  # pipeline bubble
-        IF_ID_NEXT["pc"]   = pc
+        if pc < len(program):
+            IF_ID_NEXT["inst"] = program[pc]
+            IF_ID_NEXT["pc"]   = pc + 1
+            pc += 1
+        else:
+            IF_ID_NEXT["inst"] = None  # pipeline bubble
+            IF_ID_NEXT["pc"]   = pc
 
 def ID():
     global ID_EX_NEXT
