@@ -244,19 +244,23 @@ def is_binary_string(s):
     return len(s) > 0 and all(c in "01" for c in s)
 
 def split_machine_code(inst):
-    inst = inst.replace("0x", "")
-    if is_binary_string(inst):
+    inst = inst.strip()
+    if inst.startswith("0x") or inst.startswith("0X"):
+        inst = int(inst, 16)
+    elif is_binary_string(inst):
         inst = int(inst, 2)
     else:
         inst = int(inst, 16)
-        opcode = (inst & 0xFC000000) >> 26
-        rs     = (inst & 0x03E00000) >> 21
-        rt     = (inst & 0x001F0000) >> 16
-        rd     = (inst & 0x0000F800) >> 11
-        shamt  = (inst & 0x000007C0) >> 6
-        funct  = (inst & 0x0000003F)
-        target = inst & 0x03FFFFFF
-        imm = inst & 0x0000FFFF
+
+    opcode = (inst & 0xFC000000) >> 26
+    rs     = (inst & 0x03E00000) >> 21
+    rt     = (inst & 0x001F0000) >> 16
+    rd     = (inst & 0x0000F800) >> 11
+    shamt  = (inst & 0x000007C0) >> 6
+    funct  = (inst & 0x0000003F)
+    target = inst & 0x03FFFFFF
+    imm = inst & 0x0000FFFF
+
     if imm & 0x8000: # for signed
         imm -= 0x10000
     return opcode, rs, rt, rd, shamt, funct, target, imm
@@ -578,7 +582,7 @@ def run(program):
 
 program = []
 
-program_path = "sample_machine2a.asm"
+program_path = "sample_program2a.asm"
 
 with open(program_path, "r") as f:
     program = f.readlines()
@@ -586,11 +590,16 @@ with open(program_path, "r") as f:
 # Clean instructions for parsing
 for i in range(len(program)):
     line = program[i].strip()
+    if "#" in line:
+        line = line[:line.index("#")].strip()
     if line.startswith("0x") or is_binary_string(line): 
         program[i] = machine_to_asm(*split_machine_code(line))
-        program[i] = program[i].replace("\n", "")
-        program[i] = program[i].replace(",", "")
-        program[i] = program[i].replace("$", "")
+    else:
+        program[i] = line
+    program[i] = program[i].replace("\n", "")
+    program[i] = program[i].replace(",", "")
+    program[i] = program[i].replace("$", "")
+program = [inst for inst in program if inst.strip()]
     
 print(program)
 
