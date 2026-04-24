@@ -414,12 +414,13 @@ def IF():
         pc = branch_target_reg
         branch_taken = 0
 
+    # If stall, don't update IF/ID
     if stallFlag:
         return
 
     elif pc < len(program) and not flush_ifid:
         IF_inst = program[pc]
-        IF_ID_NEXT["inst"] = program[pc]  # for result printing
+        IF_ID_NEXT["inst"] = program[pc] 
         IF_ID_NEXT["pc"]   = pc + 1
         pc += 1
     else:
@@ -432,37 +433,23 @@ def ID():
 
     raw_inst = IF_ID.get("inst")
     if raw_inst is None or flush_idex:  # bubble — clear the pipeline register and do nothing
-        ID_EX_NEXT["inst"]     = None
-        ID_EX_NEXT["rs"]       = None
-        ID_EX_NEXT["rt"]       = None
-        ID_EX_NEXT["rd"]       = None
-        ID_EX_NEXT["imm"]      = 0
-        ID_EX_NEXT["rs_val"]   = 0
-        ID_EX_NEXT["rt_val"]   = 0
-        ID_EX_NEXT["Branch"]   = 0
-        ID_EX_NEXT["ALUOp"]    = None
-        ID_EX_NEXT["ALUSrc"]   = 0
-        ID_EX_NEXT["MemRead"]  = 0
-        ID_EX_NEXT["MemToReg"] = 0
-        ID_EX_NEXT["MemWrite"] = 0
-        ID_EX_NEXT["RegDst"]   = 0
-        ID_EX_NEXT["RegWrite"] = 0
-        ID_EX_NEXT["pc"]       = 0
+        id_ex_nop()
         return
 
     inst = decode(raw_inst, label_map)
 
     findHazard(inst)
 
+    # Insert bubble
     if stallFlag:
         id_ex_nop()
         IF_inst = raw_inst
-        # pc = pc # undo fetch
         IF_ID_NEXT = IF_ID
         return
 
     branch = inst.op in {"beq", "bne", "bgez", "bgtz", "blez", "bltz", "bgt", "blt", "bge", "ble"}
 
+    # Update all instruction values for next ID/EX pipeline register
     ID_EX_NEXT["inst"]     = inst
     ID_EX_NEXT["pc"]       = IF_ID["pc"] 
     ID_EX_NEXT["rs"]       = inst.rs
@@ -471,6 +458,8 @@ def ID():
     ID_EX_NEXT["imm"]      = inst.imm
     ID_EX_NEXT["rs_val"]   = registers.get(inst.rs, 0)
     ID_EX_NEXT["rt_val"]   = registers.get(inst.rt, 0)
+
+    # Update control signals of next ID/EX pipeline register
     ID_EX_NEXT["Branch"]   = 1 if branch else 0
     ID_EX_NEXT["ALUOp"]    = ALUOp_map.get(inst.op)
     ID_EX_NEXT["ALUSrc"]   = 1 if inst.op in {"addi","addui","subi","andi","ori","xori","lui",
@@ -680,6 +669,7 @@ def EX():
 
     # print("EX result:", alu_result, "dest:", dst_reg)
 
+# Check for Load-use hazard
 def findHazard(inst):
     global stallFlag, ID_EX_NEXT
 
@@ -775,9 +765,10 @@ def run(program):
         print(f"WB  : {format_inst(MEM_WB.get('inst'))}")
         print(f"stall={stallFlag} flush_ifid={flush_ifid} flush_idex={flush_idex} taken={taken}")
         print(f"forwardA={fmt_forward(forwardA)} forwardB={fmt_forward(forwardB)}")
-        print(f"t4={registers.get("t4")}")
+        # print(f"t4={registers.get("t4")}")
         print(f"Next PC: 0x{(pc * 4):08x}\n")
 
+        # Update the pipeline registers
         IF_ID  = IF_ID_NEXT.copy()
         ID_EX  = ID_EX_NEXT.copy()
         EX_MEM = EX_MEM_NEXT.copy()
@@ -789,6 +780,7 @@ def run(program):
 
         current_cycle += 1
 
+        # Condition means the program has completed
         if IF_ID.get('inst') is None and ID_EX.get('inst') is None and EX_MEM.get('inst') is None and MEM_WB.get('inst') is None:
             break
 
