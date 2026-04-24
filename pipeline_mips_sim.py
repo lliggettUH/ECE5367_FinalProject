@@ -233,6 +233,9 @@ taken = 0
 forwardA = 0
 forwardB = 0
 
+branch_taken = 0
+branch_target_reg = 0
+
 IF_inst = None
 
 # Pipeline registers (global variables)
@@ -405,7 +408,11 @@ def decode(raw_inst: str, label_map: dict) -> Instruction:
     return inst
 
 def IF():
-    global IF_ID_NEXT, pc, IF_inst
+    global IF_ID_NEXT, pc, IF_inst, branch_taken, branch_target_reg
+
+    if branch_taken:
+        pc = branch_target_reg
+        branch_taken = 0
 
     if stallFlag:
         return
@@ -457,7 +464,7 @@ def ID():
     branch = inst.op in {"beq", "bne", "bgez", "bgtz", "blez", "bltz", "bgt", "blt", "bge", "ble"}
 
     ID_EX_NEXT["inst"]     = inst
-    ID_EX_NEXT["pc"]       = IF_ID["pc"]   # ← now connected
+    ID_EX_NEXT["pc"]       = IF_ID["pc"] 
     ID_EX_NEXT["rs"]       = inst.rs
     ID_EX_NEXT["rt"]       = inst.rt
     ID_EX_NEXT["rd"]       = inst.rd
@@ -509,34 +516,6 @@ def MEM():
 
     alu_result = EX_MEM.get("alu_result", 0)  # already fetched above
 
-    pc_src = 0
-
-    if branch and inst:
-        op = inst.op
-        if   op == "beq" and alu_result == 0:
-            pc_src = 1
-        elif op == "bne" and alu_result != 0:
-            pc_src = 1
-        elif op == "bgt" and alu_result > 0:
-            pc_src = 1
-        elif op == "blt" and alu_result < 0:
-            pc_src = 1
-        elif op == "bge" and alu_result >= 0:
-            pc_src = 1
-        elif op == "ble" and alu_result <= 0:
-            pc_src = 1
-    else:
-        pc_src = 0
-
-    global taken, flush_idex, flush_ifid
-
-    if pc_src:
-        taken = 1
-        flush_ifid = 1
-        flush_idex = 1
-        print(f"********BRANCHING BRANCHING to {branch_target} ************")
-        pc = branch_target
-
     if mem_read:
         addr = alu_result
         if addr >= 0 and addr < len(stack):
@@ -557,7 +536,7 @@ def MEM():
     MEM_WB_NEXT["dest_reg"]      = dest_reg
     MEM_WB_NEXT["RegWrite"]      = reg_write
     MEM_WB_NEXT["MemToReg"]      = mem_to_reg
-    MEM_WB_NEXT["pc_src"]        = pc_src        
+    # MEM_WB_NEXT["pc_src"]        = pc_src        
     MEM_WB_NEXT["branch_target"] = branch_target 
 
 def WB():
@@ -656,10 +635,31 @@ def EX():
     # Branch target adder 
     # Runs in parallel with the ALU; MEM stage decides whether to use it
     # branch_target = ID_EX["pc"] + ID_EX["imm"] 
+    global taken, flush_ifid, flush_idex, pc, branch_target_reg, branch_taken
     if ID_EX["Branch"]:
         imm = ID_EX["imm"] if ID_EX["imm"] is not None else 0
         branch_target = ID_EX["pc"] + imm
-        print(f"*******************BRANCH {ID_EX["pc"]} + {imm}")
+
+        op = ID_EX["inst"].op
+        take = False
+        if op == "beq" and zero == 1:
+            take = True
+        elif op == "bne" and zero == 0:
+            take = True
+        elif op == "bgt" and alu_result > 0:
+            take = True
+        elif op == "blt" and alu_result < 0:
+            take = True
+        elif op == "bge" and alu_result >= 0:
+            take = True
+        elif op == "ble" and alu_result <= 0:
+            take = True
+        if take:
+            taken = 1
+            branch_taken = 1
+            branch_target_reg = branch_target
+            flush_ifid = 1
+            flush_idex = 1
     else:
         branch_target = 0
 
@@ -775,6 +775,7 @@ def run(program):
         print(f"WB  : {format_inst(MEM_WB.get('inst'))}")
         print(f"stall={stallFlag} flush_ifid={flush_ifid} flush_idex={flush_idex} taken={taken}")
         print(f"forwardA={fmt_forward(forwardA)} forwardB={fmt_forward(forwardB)}")
+        print(f"t4={registers.get("t4")}")
         print(f"Next PC: 0x{(pc * 4):08x}\n")
 
         IF_ID  = IF_ID_NEXT.copy()
@@ -787,9 +788,6 @@ def run(program):
         flush_idex = 0
 
         current_cycle += 1
-
-        if current_cycle > 50:
-            break
 
         if IF_ID.get('inst') is None and ID_EX.get('inst') is None and EX_MEM.get('inst') is None and MEM_WB.get('inst') is None:
             break
@@ -810,10 +808,11 @@ stall_program = [
     "lw   $t3, 0($t2)",
     "add  $t4, $t3, $t1",
     "addi $t0, $zero, 1",
-    "addi $t4, $zero, 3",
-    "loop:",
-    "sub $t4, $t4, $t0",
-    "bne $t4, $zero, loop",
+    "addi $t4, $zero, 4",
+    "sub $t4, $t4, $t4",
+    "bne $t4, $zero, skip",
+    "addi $t4, $t4, 1",
+    "skip:",
     "lw   $t5, 4($t3)",
     "add  $t6, $t5, $t0", 
     "addi $t7, $t6, 1",      
@@ -830,7 +829,9 @@ stall_program = [
 
 program = stall_program
 
-program_path = "sample_machine2a.asm"
+# program = []
+
+# program_path = "sample_machine2a.asm"
 
 # with open(program_path, "r") as f:
 #     program = f.readlines()
@@ -848,5 +849,7 @@ for i in range(len(cleaned_program)):
     
 # print(cleaned_program)
 # print(label_map)
+
+program = cleaned_program
 
 run(cleaned_program)
