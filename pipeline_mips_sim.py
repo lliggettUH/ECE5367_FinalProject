@@ -743,9 +743,11 @@ def fmt_forward(forward: int) -> str:
     elif forward == 2:
         return "MEM/WB"
 
-def run(program): 
+def run(output_file_name): 
     global IF_ID, IF_ID_NEXT, ID_EX, ID_EX_NEXT, EX_MEM, EX_MEM_NEXT, MEM_WB, MEM_WB_NEXT
     global taken, flush_idex, flush_ifid, forwardA, forwardB
+
+    result = ""
 
     current_cycle = 1
 
@@ -756,17 +758,29 @@ def run(program):
         ID()
         IF()
 
-        print(f"Cycle {current_cycle}")
+        # print(f"Cycle {current_cycle}")
 
-        print(f"IF  : {IF_inst if IF_inst is not None else "nop"}")
-        print(f"ID  : {IF_ID.get('inst') if IF_ID.get('inst') is not None else "nop"}")
-        print(f"EX  : {format_inst(ID_EX.get('inst'))}")
-        print(f"MEM : {format_inst(EX_MEM.get('inst'))}")
-        print(f"WB  : {format_inst(MEM_WB.get('inst'))}")
-        print(f"stall={stallFlag} flush_ifid={flush_ifid} flush_idex={flush_idex} taken={taken}")
-        print(f"forwardA={fmt_forward(forwardA)} forwardB={fmt_forward(forwardB)}")
+        # print(f"IF  : {IF_inst if IF_inst is not None else "nop"}")
+        # print(f"ID  : {IF_ID.get('inst') if IF_ID.get('inst') is not None else "nop"}")
+        # print(f"EX  : {format_inst(ID_EX.get('inst'))}")
+        # print(f"MEM : {format_inst(EX_MEM.get('inst'))}")
+        # print(f"WB  : {format_inst(MEM_WB.get('inst'))}")
+        # print(f"stall={stallFlag} flush_ifid={flush_ifid} flush_idex={flush_idex} taken={taken}")
+        # print(f"forwardA={fmt_forward(forwardA)} forwardB={fmt_forward(forwardB)}")
+        # # print(f"t4={registers.get("t4")}")
+        # print(f"Next PC: 0x{(pc * 4):08x}\n")
+
+        result += f"Cycle {current_cycle}\n"
+
+        result += f"IF  : {IF_inst if IF_inst is not None else "nop"}\n"
+        result += f"ID  : {IF_ID.get('inst') if IF_ID.get('inst') is not None else "nop"}\n"
+        result += f"EX  : {format_inst(ID_EX.get('inst'))}\n"
+        result += f"MEM : {format_inst(EX_MEM.get('inst'))}\n"
+        result += f"WB  : {format_inst(MEM_WB.get('inst'))}\n"
+        result += f"stall={stallFlag} flush_ifid={flush_ifid} flush_idex={flush_idex} taken={taken}\n"
+        result += f"forwardA={fmt_forward(forwardA)} forwardB={fmt_forward(forwardB)}\n"
         # print(f"t4={registers.get("t4")}")
-        print(f"Next PC: 0x{(pc * 4):08x}\n")
+        result += f"Next PC: 0x{(pc * 4):08x}\n\n"
 
         # Update the pipeline registers
         IF_ID  = IF_ID_NEXT.copy()
@@ -784,49 +798,15 @@ def run(program):
         if IF_ID.get('inst') is None and ID_EX.get('inst') is None and EX_MEM.get('inst') is None and MEM_WB.get('inst') is None:
             break
 
-# program = [
-#     "addi $t0, $zero, 1",
-#     "addi $t1, $zero, 2",   
-#     "add  $t2, $t1,  $t0",
-#     "add  $t3, $t2,  $t1",
-#     "lw   $t4, 4($t1)",
-#     "j 1000",
-# ]
+    with open(output_file_name, "w", encoding="utf-8") as file:
+        file.write(result)
 
-stall_program = [
-    "addi $t0, $zero, 5",
-    "addi $t1, $zero, 10",
-    "add  $t2, $t0, $t1",
-    "lw   $t3, 0($t2)",
-    "add  $t4, $t3, $t1",
-    "addi $t0, $zero, 1",
-    "addi $t4, $zero, 4",
-    "sub $t4, $t4, $t4",
-    "bne $t4, $zero, skip",
-    "addi $t4, $t4, 1",
-    "skip:",
-    "lw   $t5, 4($t3)",
-    "add  $t6, $t5, $t0", 
-    "addi $t7, $t6, 1",      
-    "add  $s0, $t7, $t1",
-    "beq  $s0, $t1, 8",
-    "add  $s1, $s0, $t0", 
-    "j 1000",
-]
+program = []
 
-# stall_program = [
-#     "lw $t0, 0($t1)",
-#     "addi $t2, $t0, 10"
-# ]
+program_path = "test_program1.asm"
 
-program = stall_program
-
-# program = []
-
-# program_path = "sample_machine2a.asm"
-
-# with open(program_path, "r") as f:
-#     program = f.readlines()
+with open(program_path, "r") as f:
+    program = f.readlines()
 
 cleaned_program, label_map = map_labels(program)
 
@@ -844,4 +824,4 @@ for i in range(len(cleaned_program)):
 
 program = cleaned_program
 
-run(cleaned_program)
+run(program_path.replace(".asm", ".txt"))
