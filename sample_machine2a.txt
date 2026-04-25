@@ -1,0 +1,170 @@
+Cycle 1
+IF  : addi t0 zero 5
+ID  : nop
+EX  : nop
+MEM : nop
+WB  : nop
+stall=False flush_ifid=0 flush_idex=0 taken=0
+forwardA=ID/EX forwardB=ID/EX
+Next PC: 0x00000004
+
+Cycle 2
+IF  : addi t1 zero 5
+ID  : addi t0 zero 5
+EX  : nop
+MEM : nop
+WB  : nop
+stall=False flush_ifid=0 flush_idex=0 taken=0
+forwardA=ID/EX forwardB=ID/EX
+Next PC: 0x00000008
+
+Cycle 3
+IF  : addi t2 zero 9
+ID  : addi t1 zero 5
+EX  : addi $t0, $zero, 5
+MEM : nop
+WB  : nop
+stall=False flush_ifid=0 flush_idex=0 taken=0
+forwardA=ID/EX forwardB=ID/EX
+Next PC: 0x0000000c
+
+Cycle 4
+IF  : beq t0 t1 1
+ID  : addi t2 zero 9
+EX  : addi $t1, $zero, 5
+MEM : addi $t0, $zero, 5
+WB  : nop
+stall=False flush_ifid=0 flush_idex=0 taken=0
+forwardA=ID/EX forwardB=ID/EX
+Next PC: 0x00000010
+
+Cycle 5
+IF  : addi t3 zero 111
+ID  : beq t0 t1 1
+EX  : addi $t2, $zero, 9
+MEM : addi $t1, $zero, 5
+WB  : addi $t0, $zero, 5
+stall=False flush_ifid=0 flush_idex=0 taken=0
+forwardA=ID/EX forwardB=ID/EX
+Next PC: 0x00000014
+
+Cycle 6
+IF  : nop
+ID  : addi t3 zero 111
+EX  : beq $t1, $t0, 1
+MEM : addi $t2, $zero, 9
+WB  : addi $t1, $zero, 5
+stall=False flush_ifid=1 flush_idex=1 taken=1
+forwardA=MEM/WB forwardB=ID/EX
+Next PC: 0x00000014
+
+Cycle 7
+IF  : addi t3 zero 222
+ID  : nop
+EX  : nop
+MEM : beq $t1, $t0, 1
+WB  : addi $t2, $zero, 9
+stall=False flush_ifid=0 flush_idex=0 taken=0
+forwardA=ID/EX forwardB=ID/EX
+Next PC: 0x00000018
+
+Cycle 8
+IF  : beq t0 t2 2
+ID  : addi t3 zero 222
+EX  : nop
+MEM : nop
+WB  : beq $t1, $t0, 1
+stall=False flush_ifid=0 flush_idex=0 taken=0
+forwardA=ID/EX forwardB=ID/EX
+Next PC: 0x0000001c
+
+Cycle 9
+IF  : addi t4 zero 333
+ID  : beq t0 t2 2
+EX  : addi $t3, $zero, 222
+MEM : nop
+WB  : nop
+stall=False flush_ifid=0 flush_idex=0 taken=0
+forwardA=ID/EX forwardB=ID/EX
+Next PC: 0x00000020
+
+Cycle 10
+IF  : beq zero zero 1
+ID  : addi t4 zero 333
+EX  : beq $t2, $t0, 2
+MEM : addi $t3, $zero, 222
+WB  : nop
+stall=False flush_ifid=0 flush_idex=0 taken=0
+forwardA=ID/EX forwardB=ID/EX
+Next PC: 0x00000024
+
+Cycle 11
+IF  : addi t4 zero 444
+ID  : beq zero zero 1
+EX  : addi $t4, $zero, 333
+MEM : beq $t2, $t0, 2
+WB  : addi $t3, $zero, 222
+stall=False flush_ifid=0 flush_idex=0 taken=0
+forwardA=ID/EX forwardB=ID/EX
+Next PC: 0x00000028
+
+Cycle 12
+IF  : nop
+ID  : addi t4 zero 444
+EX  : beq $zero, $zero, 1
+MEM : addi $t4, $zero, 333
+WB  : beq $t2, $t0, 2
+stall=False flush_ifid=1 flush_idex=1 taken=1
+forwardA=ID/EX forwardB=ID/EX
+Next PC: 0x00000028
+
+Cycle 13
+IF  : addi t5 zero 555
+ID  : nop
+EX  : nop
+MEM : beq $zero, $zero, 1
+WB  : addi $t4, $zero, 333
+stall=False flush_ifid=0 flush_idex=0 taken=0
+forwardA=ID/EX forwardB=ID/EX
+Next PC: 0x0000002c
+
+Cycle 14
+IF  : nop
+ID  : addi t5 zero 555
+EX  : nop
+MEM : nop
+WB  : beq $zero, $zero, 1
+stall=False flush_ifid=0 flush_idex=0 taken=0
+forwardA=ID/EX forwardB=ID/EX
+Next PC: 0x0000002c
+
+Cycle 15
+IF  : nop
+ID  : nop
+EX  : addi $t5, $zero, 555
+MEM : nop
+WB  : nop
+stall=False flush_ifid=0 flush_idex=0 taken=0
+forwardA=ID/EX forwardB=ID/EX
+Next PC: 0x0000002c
+
+Cycle 16
+IF  : nop
+ID  : nop
+EX  : nop
+MEM : addi $t5, $zero, 555
+WB  : nop
+stall=False flush_ifid=0 flush_idex=0 taken=0
+forwardA=ID/EX forwardB=ID/EX
+Next PC: 0x0000002c
+
+Cycle 17
+IF  : nop
+ID  : nop
+EX  : nop
+MEM : nop
+WB  : addi $t5, $zero, 555
+stall=False flush_ifid=0 flush_idex=0 taken=0
+forwardA=ID/EX forwardB=ID/EX
+Next PC: 0x0000002c
+

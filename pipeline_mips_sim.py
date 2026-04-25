@@ -295,14 +295,16 @@ def map_labels(program):
     return cleaned_program, label_map
 
 def is_binary_string(s):
+    if "0x" in s:
+        return False
     s = s.strip()
     return len(s) > 0 and all(c in "01" for c in s)
 
 def split_machine_code(inst):
-    inst = inst.replace("0x", "")
     if is_binary_string(inst):
         inst = int(inst, 2)
     else:
+        inst = inst.replace("0x", "")
         inst = int(inst, 16)
 
     opcode = (inst & 0xFC000000) >> 26
@@ -413,6 +415,9 @@ def IF():
     if branch_taken:
         pc = branch_target_reg
         branch_taken = 0
+        IF_ID_NEXT["inst"] = None
+        IF_inst = None
+        # return
 
     # If stall, don't update IF/ID
     if stallFlag:
@@ -426,6 +431,7 @@ def IF():
     else:
         IF_inst = None
         IF_ID_NEXT["inst"] = None  # pipeline bubble
+    
 
 def ID():
     global ID_EX_NEXT, pc, IF_ID_NEXT
@@ -803,7 +809,8 @@ def run(output_file_name):
 
 program = []
 
-program_path = "test_program1.asm"
+# program_path = "test_program1.asm"
+program_path = "sample_machine2a.asm"
 
 with open(program_path, "r") as f:
     program = f.readlines()
