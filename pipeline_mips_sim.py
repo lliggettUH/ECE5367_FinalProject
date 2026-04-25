@@ -717,6 +717,8 @@ def id_ex_nop():
 def format_inst(inst):
     if inst is None:
         return "nop"
+    if inst == "nop":
+        return "nop"
     if isinstance(inst, str):
         parts = inst.split()
         if len(parts) == 0:
@@ -729,16 +731,18 @@ def format_inst(inst):
         correct_operands = []
 
         for i in range(len(operands)):
-            operands[i] = operands[i].replace(",", "")
+            operands[i] = operands[i].replace(",", "").replace("$$", "$")
             if operands[i].replace("$", "") in reg_names:
-                correct_operands.append(f"${operands[i]}")
+                correct_operand = f"${operands[i]}"
+                correct_operand = correct_operand.replace("$$", "$")
+                correct_operands.append(correct_operand)
             else:
                 correct_operands.append(operands[i])
             
 
         return f"{op} " + ", ".join(correct_operands)
     if isinstance(inst, Instruction):
-        return str(inst)
+        return str(inst).replace("$$", "$")
     return inst 
 
 def fmt_forward(forward: int) -> str:
@@ -778,8 +782,8 @@ def run(output_file_name):
 
         result += f"Cycle {current_cycle}\n"
 
-        result += f"IF  : {IF_inst if IF_inst is not None else "nop"}\n"
-        result += f"ID  : {IF_ID.get('inst') if IF_ID.get('inst') is not None else "nop"}\n"
+        result += f"IF  : {format_inst(IF_inst if IF_inst is not None else "nop")}\n"
+        result += f"ID  : {format_inst(IF_ID.get('inst') if IF_ID.get('inst') is not None else "nop")}\n"
         result += f"EX  : {format_inst(ID_EX.get('inst'))}\n"
         result += f"MEM : {format_inst(EX_MEM.get('inst'))}\n"
         result += f"WB  : {format_inst(MEM_WB.get('inst'))}\n"
@@ -809,8 +813,13 @@ def run(output_file_name):
 
 program = []
 
-# program_path = "test_program1.asm"
-program_path = "sample_machine2a.asm"
+'''
+Change the file path below to change input file
+'''
+program_path = "sample_machine2b.asm"
+
+
+
 
 with open(program_path, "r") as f:
     program = f.readlines()
